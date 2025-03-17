@@ -38,7 +38,30 @@
         }
       }
     }
+
+    function generateVariableId() {
+      const varIdCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#%()*+,-./:;=?@[]^_`{|}~";
+      let token = '';
+      for (let i = 0; i < 20; i++) {
+          const randomIndex = Math.floor(Math.random() * varIdCharset.length);
+          token += varIdCharset[randomIndex];
+      }
+      return token;
+    }
   
+    function _newVar(targetIdx, varName) {
+      if (_getVar(varName)[0]) {
+        return; // if var alredy exists, do nothing
+      }
+      const targets = vm.runtime.targets;
+      const target = targets[targetIdx];
+      const id = generateVariableId();
+      while (target.variables.hasOwnProperty(id)) {
+        const id = generateVariableId();
+      }
+      target.lookupOrCreateVariable(id, varName);
+    }
+
     class VarAccess {
       getInfo() {
         return {
@@ -50,6 +73,16 @@
               opcode: 'getVar',
               blockType: Scratch.BlockType.REPORTER,
               text: 'variable [VARIABLE]',
+              arguments: {
+                VARIABLE: {
+                  type: Scratch.ArgumentType.STRING,
+                }
+              }
+            },
+            {
+              opcode: 'varExists',
+              blockType: Scratch.BlockType.BOOLEAN,
+              text: 'variable [VARIABLE] exists?',
               arguments: {
                 VARIABLE: {
                   type: Scratch.ArgumentType.STRING,
@@ -70,13 +103,26 @@
               }
             },
             {
-              opcode: 'varExists',
-              blockType: Scratch.BlockType.BOOLEAN,
-              text: 'variable [VARIABLE] exists?',
+              opcode: 'createGlobalVar',
+              blockType: Scratch.BlockType.COMMAND,
+              text: "create global variable [VARIABLE]",
               arguments: {
                 VARIABLE: {
                   type: Scratch.ArgumentType.STRING,
                 }
+              }
+            },
+            {
+              opcode: 'createAndSetGlobalVar',
+              blockType: Scratch.BlockType.COMMAND,
+              text: "create global variable [VARIABLE] and set to [VALUE]",
+              arguments: {
+                VARIABLE: {
+                  type: Scratch.ArgumentType.STRING,
+                },
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                },
               }
             },
           ],
@@ -86,10 +132,17 @@
         return _getVar(args.VARIABLE)[1];
       }
       setVar(args) {
-        _setVar(args.VARIABLE, args.VALUE)
+        _setVar(args.VARIABLE, args.VALUE);
       }
       varExists(args) {
         return _getVar(args.VARIABLE)[0];
+      }
+      createGlobalVar(args) {
+        _newVar(0, args.VARIABLE);
+      }
+      createAndSetGlobalVar(args) {
+        _newVar(0, args.VARIABLE)
+        _setVar(args.VARIABLE, args.VALUE);
       }
     }
     Scratch.extensions.register(new VarAccess());
