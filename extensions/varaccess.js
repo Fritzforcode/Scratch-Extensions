@@ -15,7 +15,7 @@
           if (target.variables.hasOwnProperty(varId)) {
             const variable = target.variables[varId];
             if (variable.name === varName) {
-              return [true, variable.value.toString()];
+              return [true, variable.value];
             }
           }
         }
