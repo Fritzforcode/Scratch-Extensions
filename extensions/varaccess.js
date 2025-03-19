@@ -5,9 +5,10 @@
       throw new Error('The Text Variable Access extension must run unsandboxed');
     }
     const vm = Scratch.vm;
+    const runtime = vm.runtime;
   
     function _getVar(varName) {
-      const targets = vm.runtime.targets;
+      const targets = runtime.targets;
       for (const targetIdx in targets) {
         const target = targets[targetIdx];
         if (!target.isOriginal) continue;
@@ -24,7 +25,7 @@
     }
   
     function _setVar(varName, value) {
-      const targets = vm.runtime.targets;
+      const targets = runtime.targets;
       for (const targetIdx in targets) {
         const target = targets[targetIdx];
         if (!target.isOriginal) continue;
@@ -32,7 +33,10 @@
           if (target.variables.hasOwnProperty(varId)) {
             const variable = target.variables[varId];
             if (variable.name === varName) {
+              console.log(varName, "was", variable.value, "as", typeof variable.value);
+              console.log("new value is", value, "as", typeof value)
               variable.value = value;
+              console.log(varName, "now is", variable.value, "as", typeof variable.value);
             }
           }
         }
@@ -53,7 +57,7 @@
       if (_getVar(varName)[0]) {
         return; // if var alredy exists, do nothing
       }
-      const targets = vm.runtime.targets;
+      const targets = runtime.targets;
       const target = targets[targetIdx];
       const id = generateVariableId();
       while (target.variables.hasOwnProperty(id)) {

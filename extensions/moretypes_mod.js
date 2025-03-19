@@ -5,7 +5,7 @@
       throw new Error('The Text Variable Access Extension must run unsandboxed');
     }
       // i stole a lot of this code from here: https://github.com/PenguinMod/PenguinMod-ExtensionsGallery/blob/main/static/extensions/VeryGoodScratcher42/More-Types.js
-      const PATCHES_ID = "__patches_" + "vgscompiledvaluesrrrr";
+      const PATCHES_ID = "__patches_" + "textVarAccess";
       const patch = (obj, functions) => {
           if (obj[PATCHES_ID]) return;
           obj[PATCHES_ID] = {};
@@ -30,7 +30,7 @@
           visualReport(original, blockId, value) {
               if (Scratch.vm.editingTarget) {
                   const block = vm.editingTarget.blocks.getBlock(blockId);
-                  if (block?.opcode === ("vgscompiledvaluesrrrr" + "_function") && !block.topLevel) return;
+                  if (block?.opcode === ("textVarAccess" + "_function") && !block.topLevel) return;
               }
               original(blockId, value);
           }
@@ -57,11 +57,11 @@
             }
           }
         }
-        Scratch.vm.runtime.registerCompiledExtensionBlocks("vgscompiledvaluesrrrr", this.getCompileInfo());
+        Scratch.vm.runtime.registerCompiledExtensionBlocks("textVarAccess", this.getCompileInfo());
       }
       getInfo() {
         return {
-          id: 'vgscompiledvaluesrrrr',
+          id: 'textVarAccess',
           name: 'Text Variable Access',
           color1: "#32a8a4",
           blocks: [
@@ -113,7 +113,7 @@
       noComp(args, util) {
         // Check if monitor
         //console.log(util, util.thread.peekStack());
-        if (util.thread.peekStack().startsWith("vgscompiledvaluesrrrr_getVar")) {
+        if (util.thread.peekStack().startsWith("textVarAccess_getVar")) {
           // do stuff
           //console.log(args.VARIABLE)
           return this.getVar(args.VARIABLE.id, args.VARIABLE.name)
@@ -157,10 +157,15 @@
               return new (imports.TypedInput)(`${variable.source}`, imports.TYPE_UNKNOWN)
             },
             someBlock: (node, compiler, imports) => {
+              console.log("===========================================================================");
               console.log("SB node=", node);
               console.log("SB compiler=", compiler);
               const my_input = compiler.descendInput(node.my_input);
-              console.log("SB my_input=", my_input);
+              console.log("SB my_input=", my_input, my_input.asUnknown());
+              console.log(vm.runtime.ext_textVarAccess);
+              //compiler.source += `   \n`
+              console.log("");
+              compiler.source += 'console.log("DID IT", runtime)\n'
             },
             //someBlock: (node, compiler, imports) => {
             //  const local = compiler.localVariables.next();
