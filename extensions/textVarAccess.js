@@ -63,7 +63,10 @@
             if (target.variables.hasOwnProperty(varId)) {
               const variable = target.variables[varId];
               if (variable.name === varName) {
+                //console.log(varName, "was", variable.value, "as", typeof variable.value);
+                //console.log("new value is", value, "as", typeof value)
                 variable.value = value;
+                //console.log(varName, "now is", variable.value, "as", typeof variable.value);
               }
             }
           }
