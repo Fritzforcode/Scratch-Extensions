@@ -56,6 +56,7 @@
       }
       this._SETVAR = function _SETVAR(varName, value) {
         const targets = runtime.targets;
+        let varFound = false;
         for (const targetIdx in targets) {
           const target = targets[targetIdx];
           if (!target.isOriginal) continue;
@@ -66,13 +67,55 @@
                 //console.log(varName, "was", variable.value, "as", typeof variable.value);
                 //console.log("new value is", value, "as", typeof value)
                 variable.value = value;
+                varFound = true;
                 //console.log(varName, "now is", variable.value, "as", typeof variable.value);
               }
             }
           }
         }
+        if (!varFound) {
+          throw "Variable \"" + varName + "\" not found"
+        }
       }
-
+      this._GENERATEVARID = function _GENERATEVARID() {
+        const varIdCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#%()*+,-./:;=?@[]^_`{|}~";
+        let token = '';
+        for (let i = 0; i < 20; i++) {
+            const randomIndex = Math.floor(Math.random() * varIdCharset.length);
+            token += varIdCharset[randomIndex];
+        }
+        return token;
+      }
+        
+      this._CREATEVAR = function _CREATEVAR(targetIdx, varName) {
+        if (this._GETVAR(varName)[0]) {
+          return; // if var alredy exists, do nothing
+        }
+        const targets = runtime.targets;
+        const target = targets[targetIdx];
+        const id = this._GENERATEVARID();
+        while (target.variables.hasOwnProperty(id)) {
+          const id = this._GENERATEVARID();
+        }
+        target.lookupOrCreateVariable(id, varName);
+      }
+      
+      this._DELETEVAR = function _DELETEVAR(varName) {
+        const targets = runtime.targets;
+        for (const targetIdx in targets) {
+          const target = targets[targetIdx];
+          if (!target.isOriginal) continue;
+          for (const varId in target.variables) {
+            if (target.variables.hasOwnProperty(varId)) {
+              const variable = target.variables[varId];
+              if (variable.name === varName) {
+                delete target.variables[varId];
+              }
+            }
+          }
+        }
+      }
+      
       Scratch.vm.runtime.registerCompiledExtensionBlocks("textVarAccess", this.getCompileInfo());
     }
     getInfo() {
@@ -81,6 +124,26 @@
         name: 'Text Variable Access',
         color1: "#32a8a4",
         blocks: [
+          {
+            opcode: "getVar",
+            blockType: Scratch.BlockType.REPORTER,
+            text: "variable [VARIABLE]",
+            arguments: {
+              VARIABLE: {
+                type: Scratch.ArgumentType.STRING,
+              }
+            }
+          },
+          {
+            opcode: "varExists",
+            blockType: Scratch.BlockType.BOOLEAN,
+            text: "variable [VARIABLE] exists?",
+            arguments: {
+              VARIABLE: {
+                type: Scratch.ArgumentType.STRING,
+              },
+            },
+          },
           {
             opcode: "setVar",
             func: "noComp",
@@ -97,18 +160,57 @@
             }
           },
           {
-            opcode: "getVar",
-            blockType: Scratch.BlockType.REPORTER,
-            text: "variable [VARIABLE]",
+            opcode: "createGlobalVar",
+            blockType: Scratch.BlockType.COMMAND,
+            text: "create global variable [VARIABLE]",
             arguments: {
               VARIABLE: {
                 type: Scratch.ArgumentType.STRING,
-              }
-            }
+              },
+            },
+          },
+          {
+            opcode: "createSpriteVar",
+            func: "noComp",
+            blockType: Scratch.BlockType.COMMAND,
+            text: "create sprite variable [VARIABLE]",
+            arguments: {
+              VARIABLE: {
+                type: Scratch.ArgumentType.STRING,
+              },
+            },
+          },
+          {
+            opcode: "deleteVar",
+            blockType: Scratch.BlockType.COMMAND,
+            text: "delete variable [VARIABLE]",
+            arguments: {
+              VARIABLE: {
+                type: Scratch.ArgumentType.STRING,
+              },
+            },
           },
         ],
       };
     }
+    
+    getVar (args) {
+      return vm.runtime.ext_textVarAccess._GETVAR(args.VARIABLE.toString())[1];
+    }
+    varExists (args) {
+      return vm.runtime.ext_textVarAccess._GETVAR(args.VARIABLE.toString())[0];
+    }
+    createGlobalVar (args) {
+      vm.runtime.ext_textVarAccess._CREATEVAR(0, args.VARIABLE.toString()); // Stage has Index 0
+    }
+    createSpriteVar (args) {
+      console.log(target, vm.runtime.targets.indexOf(target))
+      vm.runtime.ext_textVarAccess._CREATEVAR(0, args.VARIABLE.toString());
+    }
+    deleteVar (args) {
+      vm.runtime.ext_textVarAccess._DELETEVAR(args.VARIABLE.toString());
+    }
+    
     noComp(args, util) {
       // Check if monitor
       //console.log(util, util.thread.peekStack());
@@ -122,19 +224,25 @@
             variable: generator.descendInputOfBlock(block, "VARIABLE"),
             value   : generator.descendInputOfBlock(block, "VALUE"   ),
           }),
+          createSpriteVar: (generator, block) => ({
+            kind: "stack",
+            variable: generator.descendInputOfBlock(block, "VARIABLE"),
+          }),
         },
         js: {
           setVar: (node, compiler, imports) => {
             const variable = compiler.descendInput(node.variable);
             const value    = compiler.descendInput(node.value   );
-            const generatedJS = `vm.runtime.ext_textVarAccess._SETVAR(${variable.asUnknown()}, ${value.asUnknown()});\n`
-            compiler.source += generatedJS
-          }
+            const generatedJS = `vm.runtime.ext_textVarAccess._SETVAR(${variable.asUnknown()}, ${value.asUnknown()});\n`;
+            compiler.source += generatedJS;
+          },
+          createSpriteVar: (node, compiler, imports) => {
+            const variable = compiler.descendInput(node.variable);
+            const generatedJS = `vm.runtime.ext_textVarAccess._CREATEVAR(vm.runtime.targets.indexOf(target), ${variable.asUnknown()}.toString());\n`;
+            compiler.source += generatedJS;
+          },
         }
       }
-    }
-    getVar (args) {
-      return vm.runtime.ext_textVarAccess._GETVAR(args.VARIABLE)[1]
     }
   }
   
