@@ -207,13 +207,19 @@
           }
           return this.functionDefLayers.pop();
         }
-        this.addFunctionDefArg = function (name, defaultVal) {
+        this.addFunctionDefArg = function (name) {
           if (this.functionDefLayers.length === 0) {
-            throw "Add Argument cannot be used outside a function definition block";
+            throw '"Add Argument" cannot be used outside a function definition block';
           }
-          console.log("ADD before", this.functionDefLayers);
-          this.functionDefLayers[this.functionDefLayers.length-1].args.push([name.toString(), defaultVal]);
-          console.log("ADD after", this.functionDefLayers);
+          const arg = {name: name.toString()};
+          this.functionDefLayers[this.functionDefLayers.length-1].args.push(arg);
+        }
+        this.addFunctionDefArgDefault = function (name, defaultVal) {
+          if (this.functionDefLayers.length === 0) {
+            throw '"Add Argument with Default" cannot be used outside a function definition block';
+          }
+          const arg = {name: name.toString(), defaultVal: defaultVal};
+          this.functionDefLayers[this.functionDefLayers.length-1].args.push(arg);
         }
 
         this.Object = class PlainObject {
@@ -936,20 +942,19 @@
               text: "Anonymous Function"
             },
             {
-              opcode: "anonymousFunctionWithArguments",
+              opcode: "anonymousFunctionDuringCreation",
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
               blockType: Scratch.BlockType.OUTPUT, // basically just undefined
               disableMonitor: true,
-              branchCount: 1,
-              text: "Anonymous Function with arguments",
+              branchCount: 2,
+              text: ["during creation", "Anonymous Function"],
             },
             {
               opcode: "addArgument",
               func: "noComp",
               blockShape: Scratch.BlockShape.COMMAND,
-              disableMonitor: true,
               text: "add argument [NAME]",
               arguments: {
                 NAME: {
@@ -958,23 +963,22 @@
                 },
               },
             },
-            //{
-            //  opcode: "addArgumentWithDefault",
-            //  func: "noComp",
-            //  blockShape: Scratch.BlockShape.COMMAND,
-            //  disableMonitor: true,
-            //  text: "add argument [NAME] with default [DEFAULT]",
-            //  arguments: {
-            //    NAME: {
-            //      type: Scratch.ArgumentType.STRING,
-            //      defaultValue: "Argument Name",
-            //    },
-            //    DEFAULT: {
-            //      type: Scratch.ArgumentType.STRING,
-            //      defaultValue: "Argument Default",
-            //    },
-            //  },
-            //},
+            {
+              opcode: "addArgumentWithDefault",
+              func: "noComp",
+              blockShape: Scratch.BlockShape.COMMAND,
+              text: "add argument [NAME] with default [DEFAULT]",
+              arguments: {
+                NAME: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Argument Name",
+                },
+                DEFAULT: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Argument Default",
+                },
+              },
+            },
             {
               opcode: "returnFromFunction",
               func: "noComp",
@@ -1214,9 +1218,10 @@
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK")
             }),
-            anonymousFunctionWithArguments: (generator, block) => ({
+            anonymousFunctionDuringCreation: (generator, block) => ({
               kind: "input",
-              stack: generator.descendSubstack(block, "SUBSTACK"),
+              duringCreation: generator.descendSubstack(block, "SUBSTACK" ),
+              funcCode      : generator.descendSubstack(block, "SUBSTACK2"),
             }),
             addArgument: (generator, block) => ({
               kind: "stack",
@@ -1388,24 +1393,46 @@
                 `new (runtime.ext_moreTypesPlus.Function)(target, (function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), [])`,
               imports.TYPE_UNKNOWN)
             },
-            anonymousFunctionWithArguments: (node, compiler, imports) => {
+            anonymousFunctionDuringCreation: (node, compiler, imports) => {
               console.log("AnoFunc+", node);
-              
               const oldSrc = compiler.source;
-              compiler.descendStack(node.stack, new (imports.Frame)(false));
-              const stackSrc = compiler.source.substring(oldSrc.length);
+              
+              compiler.descendStack(node.funcCode, new (imports.Frame)(false));
+              const funcCodeSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
-              let generatedJS  = "(() => {runtime.ext_moreTypesPlus.enterFunctionDef();\n";
-              generatedJS     += `return   new (runtime.ext_moreTypesPlus.Function)(target, (function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), runtime.ext_moreTypesPlus.exitFunctionDef().args);  })();`;
+              compiler.descendStack(node.duringCreation, new (imports.Frame)(false));
+              const duringCreationSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              const generatedJS = const generatedJS = `
+                (function() {
+                    runtime.ext_moreTypesPlus.enterFunctionDef();
+                    ${duringCreationSrc};
+                    
+                    // Define a generator function
+                    function* generatorFunction() {
+                        // The contents of funcCodeSrc (which can contain yield*)
+                        ${funcCodeSrc};
+                        return runtime.ext_moreTypesPlus.Nothing;
+                    }
+                    
+                    // Create an instance of the generator
+                    const result = generatorFunction();
+                
+                    // Return a new instance of the desired function type
+                    return new (runtime.ext_moreTypesPlus.Function)(
+                        target, 
+                        result, 
+                        runtime.ext_moreTypesPlus.exitFunctionDef().args
+                    );
+                })()`;
               console.log("=>", generatedJS);
-              return new (imports.TypedInput)(
-                generatedJS,
-              imports.TYPE_UNKNOWN);
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             addArgument: (node, compiler, imports) => {
               const name = compiler.descendInput(node.name);
-              compiler.source += `runtime.ext_moreTypesPlus.addFunctionDefArg(${name.asUnknown()}, null)\n`;
+              compiler.source += `runtime.ext_moreTypesPlus.addFunctionDefArg(${name.asUnknown()}, null);\n`;
               console.log("ADDED to comp");
             },
             returnFromFunction: (node, compiler, imports) => {

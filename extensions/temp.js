@@ -48,6 +48,19 @@ return   new (runtime.ext_moreTypesPlus.Function)
         );  
 })();
 
+runtime.ext_moreTypesPlus.enterFunctionDef();
+return new (runtime.ext_moreTypesPlus.Function)
+(
+    target,
+    (function*(){${funcCodeSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}),
+    runtime.ext_moreTypesPlus.exitFunctionDef().args,
+)
+
+
+new (runtime.ext_moreTypesPlus.Function)
+(target, 
+    (function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), 
+[])
 
 (() => {
     runtime.ext_moreTypesPlus.enterFunctionDef();
