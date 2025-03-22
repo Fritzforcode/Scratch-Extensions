@@ -195,6 +195,13 @@
         this.TempFunctionDef = class TempFunctionDef {
           constructor() {
             this.args = [];
+            this.hasOptionalArgs = false;
+          }
+          hasArg(name) {
+            for (const arg of this.args) {
+              if (arg.name === name) return true;
+            }
+            return false;
           }
         }
         this.functionDefLayers = [];
@@ -205,21 +212,35 @@
           if (this.functionDefLayers.length === 0) {
             throw "Internal Error";
           }
-          return this.functionDefLayers.pop();
+          const r = this.functionDefLayers.pop();
+          console.log("exit", r);
+          return r
         }
         this.addFunctionDefArg = function (name) {
           if (this.functionDefLayers.length === 0) {
             throw '"Add Argument" cannot be used outside a function definition block';
           }
           const arg = {name: name.toString()};
-          this.functionDefLayers[this.functionDefLayers.length-1].args.push(arg);
+          const fdef = this.functionDefLayers[this.functionDefLayers.length-1]
+          if (fdef.hasArg(name)) {
+            throw `Argument ${name} alredy exists`
+          }
+          if (fdef.hasOptionalArgs) {
+            throw "A positional argument cannot follow an optional argument";
+          }
+          fdef.args.push(arg);
         }
-        this.addFunctionDefArgDefault = function (name, defaultVal) {
+        this.addOptionalFunctionDefArg = function (name, defaultVal) {
           if (this.functionDefLayers.length === 0) {
             throw '"Add Argument with Default" cannot be used outside a function definition block';
           }
           const arg = {name: name.toString(), defaultVal: defaultVal};
-          this.functionDefLayers[this.functionDefLayers.length-1].args.push(arg);
+          const fdef = this.functionDefLayers[this.functionDefLayers.length-1]
+          if (fdef.hasArg(name)) {
+            throw `Argument ${name} alredy exists`
+          }
+          fdef.args.push(arg);
+          fdef.hasOptionalArgs = true;
         }
 
         this.Object = class PlainObject {
@@ -421,15 +442,13 @@
         this.Symbol.prototype.type = "symbol";
 
         this.Function = class Function {
-          constructor(target, func, args) {
+          constructor(func, args) {
             this.func     = func;
-            this.name     = target.getName();
-            this.original = target.isOriginal;
             this.args     = args;
             console.log("init", this);
           }
           toString() {
-            return `<Function in ${this.name}${!this.original ? "'s clone" : ""} args=${JSON.stringify(this.args)}>`;
+            return `<Function args=${JSON.stringify(this.args)}>`;
           }
           call() {
             return this.func();
@@ -930,7 +949,7 @@
             // Planning on adding ==, === and ==== (basically just Object.is) for objects
             // I FOUND A WAY TO MAKE FUNCTIONS
             // https://github.com/PenguinMod/PenguinMod-Vm/blob/develop/src/compiler/jsgen.js#L556
-            this.makeLabel("Anonymous Functions"),
+            this.makeLabel("Anonymous Function Definitions"),
             {
               opcode: "anonymousFunction",
               func: "noComp",
@@ -950,6 +969,7 @@
               disableMonitor: true,
               branchCount: 2,
               text: ["during creation", "Anonymous Function"],
+              tooltip: "Executes code during the creation of a Function. WARNING: Many blocks will not work within \"during creation\".",
             },
             {
               opcode: "addArgument",
@@ -964,10 +984,10 @@
               },
             },
             {
-              opcode: "addArgumentWithDefault",
+              opcode: "addOptionalArgument",
               func: "noComp",
               blockShape: Scratch.BlockShape.COMMAND,
-              text: "add argument [NAME] with default [DEFAULT]",
+              text: "add optional argument [NAME] with default [DEFAULT]",
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
@@ -992,6 +1012,7 @@
               },
               isTerminal: true,
             },
+            this.makeLabel("Anonymous Function Calls"),
             {
               opcode: "callFunction",
               func: "noComp",
@@ -1227,11 +1248,11 @@
               kind: "stack",
               name   : generator.descendInputOfBlock(block, "NAME"),
             }),
-            //addArgumentWithDefault: (generator, block) => ({
-            //  kind: "stack",
-            //  name   : generator.descendInputOfBlock(block, "NAME"   ),
-            //  default: generator.descendInputOfBlock(block, "DEFAULT"),
-            //}),
+            addOptionalArgument: (generator, block) => ({
+              kind: "stack",
+              name      : generator.descendInputOfBlock(block, "NAME"   ),
+              defaultVal: generator.descendInputOfBlock(block, "DEFAULT"),
+            }),
             returnFromFunction: (generator, block) => ({
               kind: "stack",
               value: generator.descendInputOfBlock(block, "VALUE")
@@ -1390,7 +1411,7 @@
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               return new (imports.TypedInput)(
-                `new (runtime.ext_moreTypesPlus.Function)(target, (function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), [])`,
+                `new (runtime.ext_moreTypesPlus.Function)((function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), [])`,
               imports.TYPE_UNKNOWN)
             },
             anonymousFunctionDuringCreation: (node, compiler, imports) => {
@@ -1404,36 +1425,39 @@
               compiler.descendStack(node.duringCreation, new (imports.Frame)(false));
               const duringCreationSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
+
+              let generatedJS = `
+              function () {
+                runtime.ext_moreTypesPlus.enterFunctionDef();
+                let args;
+                try {
+                  ${duringCreationSrc};
+                }
+                finally {
+                  args = runtime.ext_moreTypesPlus.exitFunctionDef().args;
+                }
+                return new (runtime.ext_moreTypesPlus.Function)
+                (
+                  (function*(){
+                    ${funcCodeSrc};
+                    return runtime.ext_moreTypesPlus.Nothing;
+                  }), 
+                  args
+                );
+              }()
+              `
               
-              const generatedJS = const generatedJS = `
-                (function() {
-                    runtime.ext_moreTypesPlus.enterFunctionDef();
-                    ${duringCreationSrc};
-                    
-                    // Define a generator function
-                    function* generatorFunction() {
-                        // The contents of funcCodeSrc (which can contain yield*)
-                        ${funcCodeSrc};
-                        return runtime.ext_moreTypesPlus.Nothing;
-                    }
-                    
-                    // Create an instance of the generator
-                    const result = generatorFunction();
-                
-                    // Return a new instance of the desired function type
-                    return new (runtime.ext_moreTypesPlus.Function)(
-                        target, 
-                        result, 
-                        runtime.ext_moreTypesPlus.exitFunctionDef().args
-                    );
-                })()`;
               console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             addArgument: (node, compiler, imports) => {
               const name = compiler.descendInput(node.name);
-              compiler.source += `runtime.ext_moreTypesPlus.addFunctionDefArg(${name.asUnknown()}, null);\n`;
-              console.log("ADDED to comp");
+              compiler.source += `runtime.ext_moreTypesPlus.addFunctionDefArg(${name.asUnknown()});\n`;
+            },
+            addOptionalArgument: (node, compiler, imports) => {
+              const name       = compiler.descendInput(node.name);
+              const defaultVal = compiler.descendInput(node.defaultVal);
+              compiler.source += `runtime.ext_moreTypesPlus.addOptionalFunctionDefArg(${name.asUnknown()}, ${defaultVal.asUnknown()});\n`;
             },
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
