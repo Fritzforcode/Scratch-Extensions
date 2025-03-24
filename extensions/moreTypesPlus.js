@@ -195,13 +195,23 @@
         this.TempFunctionDef = class TempFunctionDef {
           constructor() {
             this.args = [];
+            this.argDefaults = {};
             this.hasOptionalArgs = false;
           }
+          toString() {
+            return `FunctionDef(args=${JSON.stringify(this.args)}, argDefaults=${JSON.stringify(this.argDefaults)})`
+          }
+          getArgIndex(name) {
+            return this.args.indexOf(name);
+          }
           hasArg(name) {
-            for (const arg of this.args) {
-              if (arg.name === name) return true;
-            }
-            return false;
+            return name in this.args;
+          }
+          argIsOptional(name) {
+            return this.argDefaults.hasOwnProperty(name);
+          }
+          getArgDefault(name) {
+            return this.argDefaults[name];
           }
         }
         this.functionDefLayers = [];
@@ -220,7 +230,6 @@
           if (this.functionDefLayers.length === 0) {
             throw '"Add Argument" cannot be used outside a function definition block';
           }
-          const arg = {name: name.toString()};
           const fdef = this.functionDefLayers[this.functionDefLayers.length-1]
           if (fdef.hasArg(name)) {
             throw `Argument ${name} alredy exists`
@@ -228,21 +237,77 @@
           if (fdef.hasOptionalArgs) {
             throw "A positional argument cannot follow an optional argument";
           }
-          fdef.args.push(arg);
+          fdef.args.push(name.toString());
         }
         this.addOptionalFunctionDefArg = function (name, defaultVal) {
           if (this.functionDefLayers.length === 0) {
             throw '"Add Argument with Default" cannot be used outside a function definition block';
           }
-          const arg = {name: name.toString(), defaultVal: defaultVal};
           const fdef = this.functionDefLayers[this.functionDefLayers.length-1]
           if (fdef.hasArg(name)) {
             throw `Argument ${name} alredy exists`
           }
-          fdef.args.push(arg);
+          fdef.args.push(name.toString());
+          fdef.argDefaults[name.toString()] = defaultVal;
           fdef.hasOptionalArgs = true;
         }
-
+        
+        this.TempFunctionCall = class TempFunctionCall {
+          constructor(fdef) {
+            this.fdef          = fdef;
+            this.setArgValues  = {};
+            this.setArgsByName = false; 
+          }
+          convert() {
+            let argValues = [];
+            for (let index = 0; index < this.fdef.args.length; index++) {
+              let name = this.fdef.args[index];
+              if (this.setArgValues.hasOwnProperty(index)) {
+                argValues.push(this.setArgValues[index]);
+              } else if (this.fdef.argIsOptional(name)) {
+                argValues.push(this.fdef.getArgDefault(name));
+              } else {
+                throw "A non-optional argument was not set."
+              }
+            }
+            return argValues;
+          }
+        }
+        this.functionCallLayers = [];
+        this.enterFunctionCall = function (fdef) {
+          this.functionCallLayers.push(new this.TempFunctionCall(fdef));
+        }
+        this.exitFunctionCall = function () {
+          if (this.functionCallLayers.length === 0) {
+            throw "Internal Error";
+          }
+          const r = this.functionCallLayers.pop();
+          console.log("exit", r);
+          return r
+        }
+        this.setNextFunctionCallArg = function (value) {
+          const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
+          if (fcall.setArgValues.length >= fcall.fdef.args.length) {
+            throw "Attempted setting more arguments then were defined.";
+          }
+          if (fcall.setArgsByName) {
+            throw "Attempted setting an argument positionally after setting an argument by name.";
+          }
+          fcall.setArgValues[Object.keys(fcall.setArgValues).length] = value;
+        }
+        this.setFunctionCallArgByName = function (name, value) {
+          const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
+          const argIndex = fcall.fdef.getArgIndex(name);
+          if (argIndex === -1) {
+            throw `Attempted setting never declared argument ${name}.`;
+          }
+          if (fcall.setArgValues.hasOwnProperty(argIndex)) {
+            throw `Attempted setting an argument twice.`
+          }
+          fcall.setArgValues[argIndex] = value;
+          fcall.setArgsByName = true;
+        }
+        
         this.Object = class PlainObject {
           constructor(obj) {
             this.__values = obj || {}
@@ -442,22 +507,23 @@
         this.Symbol.prototype.type = "symbol";
 
         this.Function = class Function {
-          constructor(func, args) {
+          constructor(func, fdef) {
             this.func     = func;
-            this.args     = args;
+            this.fdef     = fdef;
             console.log("init", this);
           }
           toString() {
-            return `<Function args=${JSON.stringify(this.args)}>`;
+            return `<Function fdef=${JSON.stringify(this.fdef)}>`;
           }
           call() {
             return this.func();
           }
           callWithArgs(args) {
+            console.log("called with args", this, args);
             return this.func.apply(null, args);
           }
-          callWithThis(self) {
-            return this.func.call(self)
+          callWithThis(thisVal) {
+            return this.func.call(thisVal)
           }
         }
         /*this.RegExp = class RegularExpression {
@@ -626,8 +692,8 @@
         this.isObject = (value) => {
           return (this.typeof(value) === "Object" || this.typeof(value) === "Array" || this.typeof(value) === "Set" || this.typeof(value) === "Map")
         }
-        this.trySuper = function* (self) {
-          const constructor = self.constructor;
+        this.trySuper = function* (thisVal) {
+          const constructor = thisVal.constructor;
           const superClasses = [];
           if (constructor) {
             // Use a loop to find all superClasses
@@ -636,14 +702,14 @@
               const superClass = Object.getPrototypeOf(oldClass);
               if (!(superClass === Function || superClass === this.Object || superClass === this.Array || superClass === this.Set || superClass === this.Map) && !(superClass == null)) {
                 superClasses.unshift(superClass); // Use unshift to mimic the behavior of super in javascript.
-                //(yield* (superClass.prototype.init.call(self, true)))
+                //(yield* (superClass.prototype.init.call(thisVal, true)))
               } else {
                 break;
               }
               oldClass = superClass
             }
             for (const superClass of superClasses) {
-              (yield* (superClass.prototype.init.call(self, true)));
+              (yield* (superClass.prototype.init.call(thisVal, true)));
             }
           }
           // If the function gets here and superClass.init hasn't been called, act as if nothing had happened.
@@ -847,7 +913,7 @@
               func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
               text: "add [VALUE] to the end of [OBJECT]",
-              tooltip: "self-explanatory",
+              tooltip: "this-explanatory",
               arguments: {
                 VALUE: {
                   type: Scratch.ArgumentType.STRING,
@@ -961,14 +1027,14 @@
               text: "Anonymous Function"
             },
             {
-              opcode: "anonymousFunctionDuringCreation",
+              opcode: "beforeCreationAnonymousFunction",
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
               blockType: Scratch.BlockType.OUTPUT, // basically just undefined
               disableMonitor: true,
               branchCount: 2,
-              text: ["during creation", "Anonymous Function"],
+              text: ["before creation", "Anonymous Function"],
               tooltip: "Executes code during the creation of a Function. WARNING: Many blocks will not work within \"during creation\".",
             },
             {
@@ -1033,6 +1099,21 @@
               blockShape: Scratch.BlockShape.SQUARE,
               text: "call function [FUNCTION] and get return value",
               tooltip: "Executes a function. ",
+              arguments: {
+               FUNCTION: {
+                 type: Scratch.ArgumentType.STRING,
+                 defaultValue: "Insert Function Here",
+               }
+              }
+            },
+            {
+              opcode: "prepareAndCallFunction",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              disableMonitor: true,
+              branchCount: 1,
+              text: ["prepare", "and call function [FUNCTION]"],
+              tooltip: "Executes a function, and discards its return value. WARNING: Many blocks will not work within \"prepare\".",
               arguments: {
                FUNCTION: {
                  type: Scratch.ArgumentType.STRING,
@@ -1239,7 +1320,7 @@
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK")
             }),
-            anonymousFunctionDuringCreation: (generator, block) => ({
+            beforeCreationAnonymousFunction: (generator, block) => ({
               kind: "input",
               duringCreation: generator.descendSubstack(block, "SUBSTACK" ),
               funcCode      : generator.descendSubstack(block, "SUBSTACK2"),
@@ -1264,6 +1345,11 @@
             callFunctionOutput: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               func: generator.descendInputOfBlock(block, "FUNCTION")
+            }),
+            prepareAndCallFunction: (generator, block) => (generator.script.yields = true, { // Tell the compiler that the script needs to yield cuz it does
+              kind: "stack",
+              func: generator.descendInputOfBlock(block, "FUNCTION"),
+              duringPreperation: generator.descendSubstack(block, "SUBSTACK" ),
             }),
             getIndex: (generator, block) => ({
               kind: "input", /// gotta finish later.
@@ -1411,10 +1497,10 @@
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               return new (imports.TypedInput)(
-                `new (runtime.ext_moreTypesPlus.Function)((function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), [])`,
+                `new (runtime.ext_moreTypesPlus.Function)((function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), null)`,
               imports.TYPE_UNKNOWN)
             },
-            anonymousFunctionDuringCreation: (node, compiler, imports) => {
+            beforeCreationAnonymousFunction: (node, compiler, imports) => {
               console.log("AnoFunc+", node);
               const oldSrc = compiler.source;
               
@@ -1425,16 +1511,18 @@
               compiler.descendStack(node.duringCreation, new (imports.Frame)(false));
               const duringCreationSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
-
-              let generatedJS = `
+              
+              const local = compiler.localVariables.next();
+              
+              const generatedJS = `
               function () {
                 runtime.ext_moreTypesPlus.enterFunctionDef();
-                let args;
+                let ${local};
                 try {
                   ${duringCreationSrc};
                 }
                 finally {
-                  args = runtime.ext_moreTypesPlus.exitFunctionDef().args;
+                  ${local} = runtime.ext_moreTypesPlus.exitFunctionDef();
                 }
                 return new (runtime.ext_moreTypesPlus.Function)
                 (
@@ -1442,7 +1530,7 @@
                     ${funcCodeSrc};
                     return runtime.ext_moreTypesPlus.Nothing;
                   }), 
-                  args
+                  ${local}
                 );
               }()
               `
@@ -1465,16 +1553,58 @@
             callFunction: (node, compiler, imports) => {
               const local = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
-              const getFunc = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local}")).func`;
-              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              compiler.source+=`(yield* (${getFunc} = ${func.asUnknown()},\n  (runtime.ext_moreTypesPlus.typeof(${getFunc}) === "Function") ?\n  \ \ ${getFunc}.call() :\n  \ \ runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")));`
+              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension";
+
+              const generatedJS = `(yield* (
+                ${local} = ${func.asUnknown()},
+                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function") ?
+                  ${local}.call() :
+                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+              ));`;
+              compiler.source += generatedJS;
             },
             callFunctionOutput: (node, compiler, imports) => {
               const local = compiler.localVariables.next();
+              const local2 = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
-              const getFunc = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local}")).func`;
+              const generatedJS = `(yield* (
+                ${local} = ${func.asUnknown()},
+                (
+                  runtime.ext_moreTypesPlus.typeof(${local}) === "Function"
+                    ? ${local}.call()
+                    : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+                )
+              ));`
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              return new (imports.TypedInput)(`(yield* (${getFunc} = ${func.asUnknown()},\n  (runtime.ext_moreTypesPlus.typeof(${getFunc}) === "Function") ?\n  \ \ ${getFunc}.call() :\n  \ \ runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+            },
+            prepareAndCallFunction: (node, compiler, imports) => {
+              console.log("duringCall", node);
+              const local1 = compiler.localVariables.next();
+              const local2 = compiler.localVariables.next();
+              const func = compiler.descendInput(node.func);            
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.duringPreperation, new (imports.Frame)(false));
+              const duringPreperationSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
+              console.log(compiler);
+              const generatedJS = `(yield* (
+                ${local1} = ${func.asUnknown()},
+                (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
+                  (function* (){})() : // Do nothing wait for later
+                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
+                (function* (){
+                  console.log("os2");
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
+                  try {  ${duringPreperationSrc}  }
+                  finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  ${local1}.callWithArgs(${local2}.convert());
+                })()
+              ));`;
+              console.log("=>", generatedJS);
+              compiler.source += generatedJS;
             },
             getIndex: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key);
