@@ -191,7 +191,13 @@
           throw `Attempted to clone value of type ${this.typeof(value)}`
         }
 
-        
+        this.resetState = function () {
+          this.functionDefLayers = [];
+          this.functionCallLayers = [];
+          this.functionScopeLayers = [];
+        }        
+        this.resetState();
+
         this.TempFunctionDef = class TempFunctionDef {
           constructor() {
             this.args = [];
@@ -202,7 +208,7 @@
             return `FunctionDef(args=${JSON.stringify(this.args)}, argDefaults=${JSON.stringify(this.argDefaults)})`;
           }
           hasArg(name) {
-            return name in this.args;
+            return this.args.includes(name);
           }
           argIsOptional(name) {
             return this.argDefaults.hasOwnProperty(name);
@@ -211,7 +217,6 @@
             return this.argDefaults[name];
           }
         }
-        this.functionDefLayers = [];
         this.enterFunctionDef = function () {
           this.functionDefLayers.push(new this.TempFunctionDef());
         }
@@ -225,20 +230,20 @@
         }
         this.defineFunctionDefArg = function (name) {
           if (this.functionDefLayers.length === 0) {
-            throw '"Define Argument" cannot be used outside a function definition block';
+            throw '"Define Argument" cannot be used outside a function definition block.';
           }
           const fdef = this.functionDefLayers[this.functionDefLayers.length-1];
           if (fdef.hasArg(name)) {
             throw `Argument ${name} alredy exists`;
           }
           if (fdef.hasOptionalArgs) {
-            throw "A positional argument cannot follow an optional argument";
+            throw "A positional argument cannot follow an optional argument.";
           }
           fdef.args.push(name);
         }
         this.addOptionalFunctionDefArg = function (name, defaultVal) {
           if (this.functionDefLayers.length === 0) {
-            throw '"Define Argument with Default" cannot be used outside a function definition block';
+            throw '"Define Argument with Default" cannot be used outside a function definition block.';
           }
           const fdef = this.functionDefLayers[this.functionDefLayers.length-1];
           if (fdef.hasArg(name)) {
@@ -256,12 +261,12 @@
             this.setArgsByName = false; 
           }
           convert() {
-            let argValues = [];
+            let argValues = {};
             for (const name of this.fdef.args) {
               if (this.setArgValues.hasOwnProperty(name)) {
-                argValues.push(this.setArgValues[name]);
+                argValues[name] = this.setArgValues[name];
               } else if (this.fdef.argIsOptional(name)) {
-                argValues.push(this.fdef.getArgDefault(name));
+                argValues[name] = this.fdef.getArgDefault(name);
               } else {
                 throw "A non-optional argument was not set.";
               }
@@ -269,8 +274,10 @@
             return argValues;
           }
         }
-        this.functionCallLayers = [];
         this.enterFunctionCall = function (fdef) {
+          if (fdef === undefined || fdef === null) {
+            fdef = new this.TempFunctionDef();
+          }
           this.functionCallLayers.push(new this.TempFunctionCall(fdef));
         }
         this.exitFunctionCall = function () {
@@ -282,6 +289,9 @@
           return r
         }
         this.setNextFunctionCallArg = function (value) {
+          if (this.functionCallLayers.length === 0) {
+            throw '"set next call argument" cannot be used outside a function call block".';
+          }
           const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
           const argIndex = Object.keys(fcall.setArgValues).length;
           if (argIndex >= fcall.fdef.args.length) {
@@ -293,17 +303,44 @@
           fcall.setArgValues[fcall.fdef.args[argIndex]] = value;
         }
         this.setFunctionCallArgByName = function (name, value) {
+          if (this.functionCallLayers.length === 0) {
+            throw '"set call argument by name" cannot be used outside a function call block".';
+          }
           const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
           if (!fcall.fdef.hasArg(name)) {
             throw "Attempted setting an argument, which was never defined.";
           }
-          if (fcall.setArgValues.hasOwnProperty(argIndex)) {
+          if (fcall.setArgValues.hasOwnProperty(name)) {
             throw "Attempted setting an argument twice.";
           }
           fcall.setArgValues[name] = value;
           fcall.setArgsByName = true;
         }
+
+        this.TempFunctionScope = class TempFunctionScope {
+          constructor(args) {
+            this.args = args;
+          }
+        }
+        this.enterFunctionScope = function (args) {
+          this.functionScopeLayers.push(new this.TempFunctionScope(args));
+        }
+        this.exitFunctionScope = function () {
+          return this.functionScopeLayers.pop();
+        }
+        this.getFunctionArgument = function (name) {
+          if (this.functionScopeLayers.length === 0) {
+            throw '"get argument" cannot be used outside a function definition block".';
+          }
+          const scope = this.functionScopeLayers[this.functionScopeLayers.length-1];
+          console.log("scope", scope);
+          if (!scope.args.hasOwnProperty(name)) {
+            throw `Argument ${name} was never defined.`;
+          }
+          return scope.args[name];
+        }
         
+
         this.Object = class PlainObject {
           constructor(obj) {
             this.__values = obj || {};
@@ -513,10 +550,6 @@
           }
           call() {
             return this.func();
-          }
-          callWithArgs(args) {
-            console.log("called with args", this, args);
-            return this.func.apply(null, args);
           }
           callWithThis(thisVal) {
             return this.func.call(thisVal);
@@ -1023,15 +1056,15 @@
               text: "Anonymous Function"
             },
             {
-              opcode: "beforeCreationAnonymousFunction",
+              opcode: "prepareAndCreateAnonymousFunction",
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
               blockType: Scratch.BlockType.OUTPUT, // basically just undefined
               disableMonitor: true,
               branchCount: 2,
-              text: ["before creation", "Anonymous Function"],
-              tooltip: "Executes code during the creation of a Function. WARNING: Many blocks will not work within \"during creation\".",
+              text: ["prepare", "and create Anonymous Function"],
+              tooltip: "Allows the definition of arguments before creating a function.",
             },
             {
               opcode: "defineArgument",
@@ -1060,6 +1093,20 @@
                 DEFAULT: {
                   type: Scratch.ArgumentType.STRING,
                   defaultValue: "Argument Default",
+                },
+              },
+            },
+            {
+              opcode: "getArgument",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              tooltip: "Gets a function argument. Can ONLY be used within a function definition block.",
+              text: "get argument [NAME]",
+              arguments: {
+                NAME: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Argument Name",
                 },
               },
             },
@@ -1110,7 +1157,7 @@
               blockType: Scratch.BlockType.COMMAND,
               branchCount: 1,
               text: ["prepare", "and call function [FUNCTION]"],
-              tooltip: "Executes a function after preperation and discards its return value. WARNING: Many blocks will not work within \"prepare\".",
+              tooltip: "Executes a function after preperation and discards its return value. ",
               arguments: {
                FUNCTION: {
                  type: Scratch.ArgumentType.STRING,
@@ -1290,6 +1337,14 @@
                 }
               }
             },
+            this.makeLabel("Debugging"),
+            {
+              opcode: "resetInternalState",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              text:  "reset internal state",
+              tooltip: "Resets the internal state. It might fix some bugs."
+            },
           ],
           menus: {
             objectClasses: {
@@ -1347,9 +1402,9 @@
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK")
             }),
-            beforeCreationAnonymousFunction: (generator, block) => ({
+            prepareAndCreateAnonymousFunction: (generator, block) => ({
               kind: "input",
-              duringCreation: generator.descendSubstack(block, "SUBSTACK" ),
+              prepare: generator.descendSubstack(block, "SUBSTACK" ),
               funcCode      : generator.descendSubstack(block, "SUBSTACK2"),
             }),
             defineArgument: (generator, block) => ({
@@ -1360,6 +1415,10 @@
               kind: "stack",
               name      : generator.descendInputOfBlock(block, "NAME"   ),
               defaultVal: generator.descendInputOfBlock(block, "DEFAULT"),
+            }),
+            getArgument: (generator, block) => ({
+              kind: "input",
+              name: generator.descendInputOfBlock(block, "NAME"),
             }),
             returnFromFunction: (generator, block) => ({
               kind: "stack",
@@ -1376,7 +1435,7 @@
             prepareAndCallFunction: (generator, block) => (generator.script.yields = true, { // Tell the compiler that the script needs to yield cuz it does
               kind: "stack",
               func: generator.descendInputOfBlock(block, "FUNCTION"),
-              duringPreperation: generator.descendSubstack(block, "SUBSTACK" ),
+              prepare: generator.descendSubstack(block, "SUBSTACK" ),
             }),
             setNextCallArgument: (generator, block) => ({
               kind: "stack",
@@ -1411,6 +1470,9 @@
               key: generator.descendInputOfBlock(block, "KEY"),
               value: generator.descendInputOfBlock(block, "VALUE"),
               object: generator.descendInputOfBlock(block, "OBJECT")
+            }),
+            resetInternalState: (generator, block) => ({
+              kind: "stack",
             }),
             isSame: (generator, block) => ({
               kind: "input",
@@ -1536,7 +1598,7 @@
                 `new (runtime.ext_moreTypesPlus.Function)((function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), null)`,
               imports.TYPE_UNKNOWN)
             },
-            beforeCreationAnonymousFunction: (node, compiler, imports) => {
+            prepareAndCreateAnonymousFunction: (node, compiler, imports) => {
               console.log("AnoFunc+", node);
               const oldSrc = compiler.source;
               
@@ -1544,32 +1606,26 @@
               const funcCodeSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
-              compiler.descendStack(node.duringCreation, new (imports.Frame)(false));
-              const duringCreationSrc = compiler.source.substring(oldSrc.length);
+              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
               const local = compiler.localVariables.next();
-              
-              const generatedJS = `
-              function () {
-                runtime.ext_moreTypesPlus.enterFunctionDef();
-                let ${local};
-                try {
-                  ${duringCreationSrc};
-                }
-                finally {
-                  ${local} = runtime.ext_moreTypesPlus.exitFunctionDef();
-                }
-                return new (runtime.ext_moreTypesPlus.Function)
-                (
-                  (function*(){
-                    ${funcCodeSrc};
-                    return runtime.ext_moreTypesPlus.Nothing;
-                  }), 
-                  ${local}
-                );
-              }()
-              `
+
+              const generatedJS = `(yield* (
+                runtime.ext_moreTypesPlus.enterFunctionDef(),
+                function*() {
+                  try {  ${prepareSrc}  }
+                  finally {  ${local} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                  return new (runtime.ext_moreTypesPlus.Function)(
+                    (function*() {
+                      ${funcCodeSrc};
+                      return runtime.ext_moreTypesPlus.Nothing;
+                    }), 
+                    ${local}
+                  );
+                }()
+              ))`
               
               console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
@@ -1582,6 +1638,11 @@
               const name       = compiler.descendInput(node.name);
               const defaultVal = compiler.descendInput(node.defaultVal);
               compiler.source += `runtime.ext_moreTypesPlus.addOptionalFunctionDefArg(${name.asString()}, ${defaultVal.asUnknown()});\n`;
+            },
+            getArgument: (node, compiler, imports) => {
+              const name        = compiler.descendInput(node.name);
+              const generatedJS = `runtime.ext_moreTypesPlus.getFunctionArgument(${name.asString()})`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
@@ -1601,17 +1662,16 @@
             },
             callFunctionOutput: (node, compiler, imports) => {
               const local = compiler.localVariables.next();
-              const local2 = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
+              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
+
               const generatedJS = `(yield* (
                 ${local} = ${func.asUnknown()},
-                (
-                  runtime.ext_moreTypesPlus.typeof(${local}) === "Function"
-                    ? ${local}.call()
-                    : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function"
+                  ? ${local}.call()
+                  : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
                 )
               ));`
-              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
             prepareAndCallFunction: (node, compiler, imports) => {
@@ -1620,8 +1680,8 @@
               const local2 = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);            
               const oldSrc = compiler.source;
-              compiler.descendStack(node.duringPreperation, new (imports.Frame)(false));
-              const duringPreperationSrc = compiler.source.substring(oldSrc.length);
+              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
@@ -1632,11 +1692,12 @@
                   (function* (){})() : // Do nothing wait for later
                   runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
                 (function* (){
-                  console.log("os2");
                   runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
-                  try {  ${duringPreperationSrc}  }
+                  try {  ${prepareSrc}  }
                   finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  ${local1}.callWithArgs(${local2}.convert());
+                  runtime.ext_moreTypesPlus.enterFunctionScope(${local2}.convert());
+                  try {  yield* ${local1}.call();  }
+                  finally {  runtime.ext_moreTypesPlus.exitFunctionScope();  }
                 })()
               ));`;
               console.log("=>", generatedJS);
@@ -1696,6 +1757,9 @@
               compiler.descendStack(node.stack, new (imports.Frame)(true, "moreTypesPlus.iterateObject"));
               compiler.yieldLoop();
               compiler.source += "};\n"
+            },
+            resetInternalState: (node, compiler, imports) => {
+              compiler.source += "runtime.ext_moreTypesPlus.resetState();\n";
             },
             isSame: (node, compiler, imports) => {
               return new (imports.TypedInput)(`Object.is(${compiler.descendInput(node.left).asUnknown()}, ${compiler.descendInput(node.right).asUnknown()})`, imports.TYPE_BOOLEAN)
