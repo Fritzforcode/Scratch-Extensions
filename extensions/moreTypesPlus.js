@@ -199,10 +199,7 @@
             this.hasOptionalArgs = false;
           }
           toString() {
-            return `FunctionDef(args=${JSON.stringify(this.args)}, argDefaults=${JSON.stringify(this.argDefaults)})`
-          }
-          getArgIndex(name) {
-            return this.args.indexOf(name);
+            return `FunctionDef(args=${JSON.stringify(this.args)}, argDefaults=${JSON.stringify(this.argDefaults)})`;
           }
           hasArg(name) {
             return name in this.args;
@@ -224,31 +221,31 @@
           }
           const r = this.functionDefLayers.pop();
           console.log("exit", r);
-          return r
+          return r;
         }
-        this.addFunctionDefArg = function (name) {
+        this.defineFunctionDefArg = function (name) {
           if (this.functionDefLayers.length === 0) {
-            throw '"Add Argument" cannot be used outside a function definition block';
+            throw '"Define Argument" cannot be used outside a function definition block';
           }
-          const fdef = this.functionDefLayers[this.functionDefLayers.length-1]
+          const fdef = this.functionDefLayers[this.functionDefLayers.length-1];
           if (fdef.hasArg(name)) {
-            throw `Argument ${name} alredy exists`
+            throw `Argument ${name} alredy exists`;
           }
           if (fdef.hasOptionalArgs) {
             throw "A positional argument cannot follow an optional argument";
           }
-          fdef.args.push(name.toString());
+          fdef.args.push(name);
         }
         this.addOptionalFunctionDefArg = function (name, defaultVal) {
           if (this.functionDefLayers.length === 0) {
-            throw '"Add Argument with Default" cannot be used outside a function definition block';
+            throw '"Define Argument with Default" cannot be used outside a function definition block';
           }
-          const fdef = this.functionDefLayers[this.functionDefLayers.length-1]
+          const fdef = this.functionDefLayers[this.functionDefLayers.length-1];
           if (fdef.hasArg(name)) {
-            throw `Argument ${name} alredy exists`
+            throw `Argument ${name} alredy exists`;
           }
-          fdef.args.push(name.toString());
-          fdef.argDefaults[name.toString()] = defaultVal;
+          fdef.args.push(name);
+          fdef.argDefaults[name] = defaultVal;
           fdef.hasOptionalArgs = true;
         }
         
@@ -260,14 +257,13 @@
           }
           convert() {
             let argValues = [];
-            for (let index = 0; index < this.fdef.args.length; index++) {
-              let name = this.fdef.args[index];
-              if (this.setArgValues.hasOwnProperty(index)) {
-                argValues.push(this.setArgValues[index]);
+            for (const name of this.fdef.args) {
+              if (this.setArgValues.hasOwnProperty(name)) {
+                argValues.push(this.setArgValues[name]);
               } else if (this.fdef.argIsOptional(name)) {
                 argValues.push(this.fdef.getArgDefault(name));
               } else {
-                throw "A non-optional argument was not set."
+                throw "A non-optional argument was not set.";
               }
             }
             return argValues;
@@ -287,72 +283,72 @@
         }
         this.setNextFunctionCallArg = function (value) {
           const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
-          if (fcall.setArgValues.length >= fcall.fdef.args.length) {
+          const argIndex = Object.keys(fcall.setArgValues).length;
+          if (argIndex >= fcall.fdef.args.length) {
             throw "Attempted setting more arguments then were defined.";
           }
           if (fcall.setArgsByName) {
             throw "Attempted setting an argument positionally after setting an argument by name.";
           }
-          fcall.setArgValues[Object.keys(fcall.setArgValues).length] = value;
+          fcall.setArgValues[fcall.fdef.args[argIndex]] = value;
         }
         this.setFunctionCallArgByName = function (name, value) {
           const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
-          const argIndex = fcall.fdef.getArgIndex(name);
-          if (argIndex === -1) {
-            throw `Attempted setting never declared argument ${name}.`;
+          if (!fcall.fdef.hasArg(name)) {
+            throw "Attempted setting an argument, which was never defined.";
           }
           if (fcall.setArgValues.hasOwnProperty(argIndex)) {
-            throw `Attempted setting an argument twice.`
+            throw "Attempted setting an argument twice.";
           }
-          fcall.setArgValues[argIndex] = value;
+          fcall.setArgValues[name] = value;
           fcall.setArgsByName = true;
         }
         
         this.Object = class PlainObject {
           constructor(obj) {
-            this.__values = obj || {}
+            this.__values = obj || {};
           }
           get(key) {
             if (typeof key !== "string" && typeof key !== "symbol") {
-              throw "Attempted to index <Object> with a non-string and non-symbol key. "
+              throw "Attempted to index <Object> with a non-string and non-symbol key. ";
             }
             let exists = Object.hasOwn(this.__values, key);
             if (!exists) return this.Nothing;
             let value = this.__values[key];
             if (this.typeof(value) === "unknown") {
-              return this.Nothing
+              return this.Nothing;
             }
             if (value === undefined) {
-              return this.Nothing
+              return this.Nothing;
             }
             return value;
           }
           set(key, value) {
             if (typeof key !== "string" && typeof key !== "Symbol") {
-              throw "Attempted to set property of <Object> with a non-string and non-symbol key. "
+              throw "Attempted to set property of <Object> with a non-string and non-symbol key. ";
             }
             if (this.typeof(value) === "unknown") {
-              throw `Attempted to set property of <Object> with unknown value: ${value}`
+              throw `Attempted to set property of <Object> with unknown value: ${value}`;
             }
-            return this.__values[(this.typeof(key) === "Symbol") ? key.symbol : key] = value
+            return this.__values[(this.typeof(key) === "Symbol") ? key.symbol : key] = value;
           }
           delete(key) {
-            return (delete this.__values[key])
+            return (delete this.__values[key]);
           }
           get toString() {
-            return () => "<Object>"
+            return () => "<Object>";
           }
           set toString(e) {
-            throw "Cannot overwrite the toString method of an object."
+            throw "Cannot overwrite the toString method of an object.";
           }
           get size() {
             return Object.values(this.__values).length;
           }
           has(key) {
-            return this.get(key) !== this.Nothing
+            return this.get(key) !== this.Nothing;
           }
           toJSON() {
-            return "Objects do not save."
+            return "Objects do not save.";
           }
         }
         this.Object.prototype.type = "PlainObject";
@@ -363,10 +359,10 @@
           get(num) {
             let key = Math.abs(Math.floor(Number(num))) - 1;
             if (num === "length") {
-              return this.__values.length
+              return this.__values.length;
             }
             if (typeof num !== "number" && typeof num !== "boolean" && (typeof num !== "string" || Number.isNaN(key))) {
-              throw "Attempted to index <Array> with a key that cannot be parsed as a number and is not length."
+              throw "Attempted to index <Array> with a key that cannot be parsed as a number and is not length.";
             }
             let value = this.__values[key];
             if (value === undefined) {
@@ -377,30 +373,30 @@
           set(num, value) {
             let key = Math.abs(Math.floor(Number(num)));
             if (num === "length") {
-              return this.setLength(Number(value) || this.__values.length)
+              return this.setLength(Number(value) || this.__values.length);
             }
             if (typeof num !== "number" && typeof num !== "boolean" && (typeof num !== "string" || Number.isNaN(key))) {
-              throw "Attempted to set property of <Array> with a key that cannot be parsed as a number and is not length."
+              throw "Attempted to set property of <Array> with a key that cannot be parsed as a number and is not length.";
             }
             if (key > 12e6) {
-              throw "The maximum index for an array is 12 million. "
+              throw "The maximum index for an array is 12 million. ";
             }
             if (this.typeof(value) === "unknown") {
-              throw `Attempted to set property of <Array> with unknown value: ${value}`
+              throw `Attempted to set property of <Array> with unknown value: ${value}`;
             }
             return this.__values[key] = value;
           }
           delete(num) {
-            return (delete this.__values[num])
+            return (delete this.__values[num]);
           }
           add(value) {
             return this.__values.push(value);
           }
           has(num) {
-            return this.get(num) !== this.Nothing
+            return this.get(num) !== this.Nothing;
           }
           setLength(num) {
-            let len = this.__values.length
+            let len = this.__values.length;
             if (num === len) return num;
             if (num < len) return this.__values.length = num;
             // It must be larger
@@ -413,19 +409,19 @@
             return this.__values.length;
           }
           get toString() {
-            return () => "<Array>"
+            return () => "<Array>";
           }
           set toString(e) {
-            throw "Cannot overwrite the toString method of an object."
+            throw "Cannot overwrite the toString method of an object.";
           }
           toJSON() {
-            return "Arrays do not save."
+            return "Arrays do not save.";
           }
         };
         this.Array.prototype.type = "Array";
         this.Set = class Set {
           constructor(obj) {
-            this.__values = obj || new (globalThis.Set)()
+            this.__values = obj || new (globalThis.Set)();
           }
           add(value) {
             return this.__values.add(value);
@@ -461,7 +457,7 @@
         this.Set.prototype.type = "Set";
         this.Map = class Map {
           constructor(obj) {
-            this.__values = obj || new (globalThis.Map)()
+            this.__values = obj || new (globalThis.Map)();
           }
           set(key, value) {
             return this.__values.set(key, value);
@@ -476,19 +472,19 @@
             return Array.from(this.__values);
           }
           delete(key) {
-            return this.__values.delete(key)
+            return this.__values.delete(key);
           }
           get size() {
             return this.__values.size;
           }
           get toString() {
-            return () => "<Map>"
+            return () => "<Map>";
           }
           set toString(e) {
-            throw "Cannot overwrite the toString method of an object."
+            throw "Cannot overwrite the toString method of an object.";
           }
           toJSON() {
-            return "Maps do not save."
+            return "Maps do not save.";
           }
         }
         this.Map.prototype.type = "Map";	    
@@ -501,7 +497,7 @@
             return `<Symbol>`;
           }
           toJSON() {
-            return "Symbols do not save."
+            return "Symbols do not save.";
           }
         }
         this.Symbol.prototype.type = "symbol";
@@ -523,7 +519,7 @@
             return this.func.apply(null, args);
           }
           callWithThis(thisVal) {
-            return this.func.call(thisVal)
+            return this.func.call(thisVal);
           }
         }
         /*this.RegExp = class RegularExpression {
@@ -562,20 +558,20 @@
           } else if (this.typeof(value) === "Object") {
             return Object.entries(value.__values);
           } else if (this.typeof(value) === "string") {
-            return Array.from(value).entries()
+            return Array.from(value).entries();
           }
-          throw "Attempted to create an iterable for something that is not iterable."
+          throw "Attempted to create an iterable for something that is not iterable.";
         }
         
         this.NothingClass = class Nothing extends Object.assign(function(){}, {prototype: null}) {
           get toString() {
-            return () => "<Nothing>"
+            return () => "<Nothing>";
           }
           set toString(e) {
-            throw "uhhhh how did you do this?."
+            throw "uhhhh how did you do this?.";
           }
           toJSON() {
-            return "Nothing does not save."
+            return "Nothing does not save.";
           }
         }
         this.NothingClass.prototype.type = "Nothing";
@@ -583,20 +579,20 @@
         
         this.pcall = (func, target) => {
           try {
-            return func(target)
+            return func(target);
           } catch(e) {
             if ((""+e.message).includes("Class constructor")) {
-              throw ""
+              throw "";
             }
-            return e
+            return e;
           }
         }
         
         this.pconstruct = (constructor) => {
           try {
-            return new constructor()
+            return new constructor();
           } catch(e) {
-            return e
+            return e;
           }
         }
         
@@ -606,21 +602,21 @@
             this.class.WRAPPER = this;
           }
           toString() {
-            return "<Class>"
+            return "<Class>";
           }
           toJSON() {
-            return "Classes do not save"
+            return "Classes do not save";
           }
         }
         this.__methodsOfObjects = new WeakMap();
         this.appendMethod = (obj, name, method) => {
           if (typeof obj !== "object" || !obj) throw "Attempted to append method on invalid value " + obj; // im too lazy to check if its a this object
           if (!(this.__methodsOfObjects.has(obj))) {
-            this.__methodsOfObjects.set(obj, Object.create(null))
+            this.__methodsOfObjects.set(obj, Object.create(null));
           }
-          if (this.typeof(method) !== "Function") throw "Attempted to append method, but the method is not a function."
+          if (this.typeof(method) !== "Function") throw "Attempted to append method, but the method is not a function.";
           if (Object.hasOwn(this.__methodsOfObjects.get(obj), name)) {
-            throw `Object ${obj} already has method ${name}, cannot append method.`
+            throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
           return this.__methodsOfObjects.get(obj)[name] = method;
         }
@@ -643,7 +639,7 @@
                 let method = null;
                 if (!newWrapper) break;
                 if (method = this.__methodsOfObjects.get(newWrapper)?.[name]) {
-                  method.callWithThis(obj)
+                  method.callWithThis(obj);
                 }
                 oldWrapper = newWrapper; // go to next iteration
               }
@@ -657,17 +653,17 @@
         }
         // OOP Helper functions
         this.canConstruct = (value) => {
-          return this.typeof(value) === "Class" && (typeof value.class.prototype.init) === "function"
+          return this.typeof(value) === "Class" && (typeof value.class.prototype.init) === "function";
         }
         this.inheritsFrom = (value, otherClass) => {
-          return value.class.prototype instanceof (this.typeof(value) === "Class" ? value.class : value)
+          return value.class.prototype instanceof (this.typeof(value) === "Class" ? value.class : value);
         }
         this.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
           if (this.canConstruct(value)) {
             const instance = new (value.class)();
             return (yield* instance.init());
           } else {
-            throw "Attempted to construct from non-class."
+            throw "Attempted to construct from non-class.";
           }
         }
         this.getClassToExtend = (strOrClass, isForInstanceof) => {
@@ -683,14 +679,14 @@
               return this.Map;
             default:
               if (!isForInstanceof) {
-            throw "Tried to extend invalid value"
-          } else {
-            throw "Invalid class for instanceof"
-          }
+                throw "Tried to extend invalid value";
+              } else {
+                throw "Invalid class for instanceof";
+              }
           }
         }
         this.isObject = (value) => {
-          return (this.typeof(value) === "Object" || this.typeof(value) === "Array" || this.typeof(value) === "Set" || this.typeof(value) === "Map")
+          return (this.typeof(value) === "Object" || this.typeof(value) === "Array" || this.typeof(value) === "Set" || this.typeof(value) === "Map");
         }
         this.trySuper = function* (thisVal) {
           const constructor = thisVal.constructor;
@@ -706,7 +702,7 @@
               } else {
                 break;
               }
-              oldClass = superClass
+              oldClass = superClass;
             }
             for (const superClass of superClasses) {
               (yield* (superClass.prototype.init.call(thisVal, true)));
@@ -1038,10 +1034,11 @@
               tooltip: "Executes code during the creation of a Function. WARNING: Many blocks will not work within \"during creation\".",
             },
             {
-              opcode: "addArgument",
+              opcode: "defineArgument",
               func: "noComp",
               blockShape: Scratch.BlockShape.COMMAND,
-              text: "add argument [NAME]",
+              text: "define argument [NAME]",
+              tooltip: 'Defines a function argument with the given name. Works ONLY within the "before creation" substack.',
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
@@ -1050,10 +1047,11 @@
               },
             },
             {
-              opcode: "addOptionalArgument",
+              opcode: "defineOptionalArgument",
               func: "noComp",
               blockShape: Scratch.BlockShape.COMMAND,
-              text: "add optional argument [NAME] with default [DEFAULT]",
+              text: "define optional argument [NAME] with default [DEFAULT]",
+              tooltip: 'Defines a function argument with the given name and default. Works ONLY within the "before creation" substack.',
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
@@ -1110,16 +1108,45 @@
               opcode: "prepareAndCallFunction",
               func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
-              disableMonitor: true,
               branchCount: 1,
               text: ["prepare", "and call function [FUNCTION]"],
-              tooltip: "Executes a function, and discards its return value. WARNING: Many blocks will not work within \"prepare\".",
+              tooltip: "Executes a function after preperation and discards its return value. WARNING: Many blocks will not work within \"prepare\".",
               arguments: {
                FUNCTION: {
                  type: Scratch.ArgumentType.STRING,
                  defaultValue: "Insert Function Here",
                }
               }
+            },
+            {
+              opcode: "setNextCallArgument",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              text: "set next call argument to [VALUE]",
+              tooltip: 'Sets the next function argument to the given value. Works ONLY within the "prepare" substack.',
+              arguments: {
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "",
+                },
+              },
+            },
+            {
+              opcode: "setCallArgumentByName",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              text: "set call argument [NAME] to [VALUE]",
+              tooltip: 'Sets the function argument with given name to the given value. Works ONLY within the "prepare" substack.',
+              arguments: {
+                NAME: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Argument Name",
+                },
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "",
+                },
+              },
             },
             this.makeLabel("OOP"),
             {
@@ -1325,11 +1352,11 @@
               duringCreation: generator.descendSubstack(block, "SUBSTACK" ),
               funcCode      : generator.descendSubstack(block, "SUBSTACK2"),
             }),
-            addArgument: (generator, block) => ({
+            defineArgument: (generator, block) => ({
               kind: "stack",
               name   : generator.descendInputOfBlock(block, "NAME"),
             }),
-            addOptionalArgument: (generator, block) => ({
+            defineOptionalArgument: (generator, block) => ({
               kind: "stack",
               name      : generator.descendInputOfBlock(block, "NAME"   ),
               defaultVal: generator.descendInputOfBlock(block, "DEFAULT"),
@@ -1350,6 +1377,15 @@
               kind: "stack",
               func: generator.descendInputOfBlock(block, "FUNCTION"),
               duringPreperation: generator.descendSubstack(block, "SUBSTACK" ),
+            }),
+            setNextCallArgument: (generator, block) => ({
+              kind: "stack",
+              value: generator.descendInputOfBlock(block, "VALUE"),
+            }),
+            setCallArgumentByName: (generator, block) => ({
+              kind: "stack",
+              name : generator.descendInputOfBlock(block, "NAME" ),
+              value: generator.descendInputOfBlock(block, "VALUE"),
             }),
             getIndex: (generator, block) => ({
               kind: "input", /// gotta finish later.
@@ -1538,14 +1574,14 @@
               console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
-            addArgument: (node, compiler, imports) => {
+            defineArgument: (node, compiler, imports) => {
               const name = compiler.descendInput(node.name);
-              compiler.source += `runtime.ext_moreTypesPlus.addFunctionDefArg(${name.asUnknown()});\n`;
+              compiler.source += `runtime.ext_moreTypesPlus.defineFunctionDefArg(${name.asString()});\n`;
             },
-            addOptionalArgument: (node, compiler, imports) => {
+            defineOptionalArgument: (node, compiler, imports) => {
               const name       = compiler.descendInput(node.name);
               const defaultVal = compiler.descendInput(node.defaultVal);
-              compiler.source += `runtime.ext_moreTypesPlus.addOptionalFunctionDefArg(${name.asUnknown()}, ${defaultVal.asUnknown()});\n`;
+              compiler.source += `runtime.ext_moreTypesPlus.addOptionalFunctionDefArg(${name.asString()}, ${defaultVal.asUnknown()});\n`;
             },
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
@@ -1606,6 +1642,15 @@
               console.log("=>", generatedJS);
               compiler.source += generatedJS;
             },
+            setNextCallArgument: (node, compiler, imports) => {
+              const value = compiler.descendInput(node.value);
+              compiler.source += `runtime.ext_moreTypesPlus.setNextFunctionCallArg(${value.asUnknown()});\n`;
+            },
+            setCallArgumentByName: (node, compiler, imports) => {
+              const name  = compiler.descendInput(node.name);
+              const value = compiler.descendInput(node.value);
+              compiler.source += `runtime.ext_moreTypesPlus.setFunctionCallArgByName(${name.asString()}, ${value.asUnknown()});\n`;
+            },            
             getIndex: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key);
               const obj = compiler.descendInput(node.object);
