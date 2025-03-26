@@ -1166,6 +1166,21 @@
               }
             },
             {
+              opcode: "prepareAndCallFunctionOutput",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              branchCount: 1,
+              text: ["prepare", "and call function [FUNCTION]"],
+              tooltip: "Executes a function after preperation and discards its return value. ",
+              arguments: {
+               FUNCTION: {
+                 type: Scratch.ArgumentType.STRING,
+                 defaultValue: "Insert Function Here",
+               }
+              }
+            },
+            {
               opcode: "setNextCallArgument",
               func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
@@ -1432,8 +1447,13 @@
               kind: "input",
               func: generator.descendInputOfBlock(block, "FUNCTION")
             }),
-            prepareAndCallFunction: (generator, block) => (generator.script.yields = true, { // Tell the compiler that the script needs to yield cuz it does
+            prepareAndCallFunction: (generator, block) => (generator.script.yields = true, {
               kind: "stack",
+              func: generator.descendInputOfBlock(block, "FUNCTION"),
+              prepare: generator.descendSubstack(block, "SUBSTACK" ),
+            }),
+            prepareAndCallFunctionOutput: (generator, block) => (generator.script.yields = true, {
+              kind: "input",
               func: generator.descendInputOfBlock(block, "FUNCTION"),
               prepare: generator.descendSubstack(block, "SUBSTACK" ),
             }),
@@ -1654,9 +1674,10 @@
 
               const generatedJS = `(yield* (
                 ${local} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function") ?
-                  ${local}.call() :
-                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function"
+                  ? ${local}.call()
+                  : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+                )
               ));`;
               compiler.source += generatedJS;
             },
@@ -1672,7 +1693,56 @@
                   : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
                 )
               ));`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            },
+            prepareAndCallFunctionOutput: (node, compiler, imports) => {
+              console.log("duringCallOut", node);
+              const local1 = compiler.localVariables.next();
+              const local2 = compiler.localVariables.next();
+              const genLocal = compiler.localVariables.next();
+              const valuesLocal = compiler.localVariables.next();
+              const indexLocal = compiler.localVariables.next();
+              const itemLocal = compiler.localVariables.next();
+              const func = compiler.descendInput(node.func);            
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
+              console.log(compiler);
+              const generatedJS = `(yield* (
+                ${local1} = ${func.asUnknown()},
+                (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
+                  (function* (){})() : // Do nothing wait for later
+                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
+                (function* (){
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
+                  try {  ${prepareSrc}  }
+                  finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  runtime.ext_moreTypesPlus.enterFunctionScope(${local2}.convert());
+                  
+                  try {
+                    ${genLocal} = ${local1}.call();
+                    ${valuesLocal} = [];
+                    ${itemLocal} = {done: false};
+                    while (!${itemLocal}.done) {
+                      ${itemLocal} = ${genLocal}.next();
+                      console.log("got yielded", ${itemLocal});
+                      ${valuesLocal}.push(${itemLocal}.value);
+                    }
+                    for ([${indexLocal}, ${itemLocal}] of ${valuesLocal}.entries()) {
+                      if (${indexLocal} === ${valuesLocal}.length - 1) {
+                        return ${itemLocal};
+                      }
+                      yield ${itemLocal};
+                    }
+                  }
+                  finally {  runtime.ext_moreTypesPlus.exitFunctionScope();  }
+                })()
+              ));`;
+              console.log("=>", generatedJS);
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             prepareAndCallFunction: (node, compiler, imports) => {
               console.log("duringCall", node);
