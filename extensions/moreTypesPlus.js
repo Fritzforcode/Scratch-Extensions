@@ -91,11 +91,8 @@
               if (target.variables.hasOwnProperty(varId)) {
                 const variable = target.variables[varId];
                 if (variable.name === varName) {
-                  //console.log(varName, "was", variable.value, "as", typeof variable.value);
-                  //console.log("new value is", value, "as", typeof value)
                   variable.value = value;
                   varFound = true;
-                  //console.log(varName, "now is", variable.value, "as", typeof variable.value);
                 }
               }
             }
@@ -224,9 +221,7 @@
           if (this.functionDefLayers.length === 0) {
             throw "Internal Error";
           }
-          const r = this.functionDefLayers.pop();
-          console.log("exit", r);
-          return r;
+          return this.functionDefLayers.pop();
         }
         this.defineFunctionDefArg = function (name) {
           if (this.functionDefLayers.length === 0) {
@@ -284,9 +279,7 @@
           if (this.functionCallLayers.length === 0) {
             throw "Internal Error";
           }
-          const r = this.functionCallLayers.pop();
-          console.log("exit", r);
-          return r
+          return this.functionCallLayers.pop();
         }
         this.setNextFunctionCallArg = function (value) {
           if (this.functionCallLayers.length === 0) {
@@ -317,23 +310,22 @@
           fcall.setArgsByName = true;
         }
 
-        this.TempFunctionScope = class TempFunctionScope {
+        this.TempScope = class TempScope {
           constructor(args) {
             this.args = args;
           }
         }
-        this.enterFunctionScope = function (args) {
-          this.functionScopeLayers.push(new this.TempFunctionScope(args));
+        this.enterScope = function (args) {
+          this.functionScopeLayers.push(new this.TempScope(args));
         }
-        this.exitFunctionScope = function () {
+        this.exitScope = function () {
           return this.functionScopeLayers.pop();
         }
         this.getFunctionArgument = function (name) {
           if (this.functionScopeLayers.length === 0) {
-            throw '"get argument" cannot be used outside a function definition block".';
+            throw '"get argument" cannot be used outside a function or class definition block".';
           }
           const scope = this.functionScopeLayers[this.functionScopeLayers.length-1];
-          console.log("scope", scope);
           if (!scope.args.hasOwnProperty(name)) {
             throw `Argument ${name} was never defined.`;
           }
@@ -1619,7 +1611,6 @@
               imports.TYPE_UNKNOWN)
             },
             prepareAndCreateAnonymousFunction: (node, compiler, imports) => {
-              console.log("AnoFunc+", node);
               const oldSrc = compiler.source;
               
               compiler.descendStack(node.funcCode, new (imports.Frame)(false));
@@ -1646,8 +1637,6 @@
                   );
                 }()
               ))`
-              
-              console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             defineArgument: (node, compiler, imports) => {
@@ -1696,13 +1685,8 @@
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             prepareAndCallFunctionOutput: (node, compiler, imports) => {
-              console.log("duringCallOut", node);
               const local1 = compiler.localVariables.next();
               const local2 = compiler.localVariables.next();
-              const genLocal = compiler.localVariables.next();
-              const valuesLocal = compiler.localVariables.next();
-              const indexLocal = compiler.localVariables.next();
-              const itemLocal = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);            
               const oldSrc = compiler.source;
               compiler.descendStack(node.prepare, new (imports.Frame)(false));
@@ -1710,7 +1694,6 @@
               compiler.source = oldSrc;
               
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              console.log(compiler);
               const generatedJS = `(yield* (
                 ${local1} = ${func.asUnknown()},
                 (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
@@ -1720,32 +1703,14 @@
                   runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
                   try {  ${prepareSrc}  }
                   finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterFunctionScope(${local2}.convert());
-                  
-                  try {
-                    ${genLocal} = ${local1}.call();
-                    ${valuesLocal} = [];
-                    ${itemLocal} = {done: false};
-                    while (!${itemLocal}.done) {
-                      ${itemLocal} = ${genLocal}.next();
-                      console.log("got yielded", ${itemLocal});
-                      ${valuesLocal}.push(${itemLocal}.value);
-                    }
-                    for ([${indexLocal}, ${itemLocal}] of ${valuesLocal}.entries()) {
-                      if (${indexLocal} === ${valuesLocal}.length - 1) {
-                        return ${itemLocal};
-                      }
-                      yield ${itemLocal};
-                    }
-                  }
-                  finally {  runtime.ext_moreTypesPlus.exitFunctionScope();  }
+                  runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
+                  try {  return yield* ${local1}.call();  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ));`;
-              console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             prepareAndCallFunction: (node, compiler, imports) => {
-              console.log("duringCall", node);
               const local1 = compiler.localVariables.next();
               const local2 = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);            
@@ -1755,7 +1720,6 @@
               compiler.source = oldSrc;
               
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              console.log(compiler);
               const generatedJS = `(yield* (
                 ${local1} = ${func.asUnknown()},
                 (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
@@ -1765,12 +1729,11 @@
                   runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
                   try {  ${prepareSrc}  }
                   finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterFunctionScope(${local2}.convert());
+                  runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
                   try {  yield* ${local1}.call();  }
-                  finally {  runtime.ext_moreTypesPlus.exitFunctionScope();  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ));`;
-              console.log("=>", generatedJS);
               compiler.source += generatedJS;
             },
             setNextCallArgument: (node, compiler, imports) => {
@@ -1975,8 +1938,7 @@
         vm.runtime.ext_moreTypesPlus._CREATEVAR(0, args.VARIABLE.toString()); // Stage has Index 0
       }
       createSpriteVar (args) {
-        console.log(target, vm.runtime.targets.indexOf(target))
-        vm.runtime.ext_moreTypesPlus._CREATEVAR(0, args.VARIABLE.toString());
+        vm.runtime.ext_moreTypesPlus._CREATEVAR(vm.runtime.targets.indexOf(target), args.VARIABLE.toString());
       }
       deleteVar (args) {
         vm.runtime.ext_moreTypesPlus._DELETEVAR(args.VARIABLE.toString());
