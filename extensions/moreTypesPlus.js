@@ -45,12 +45,13 @@
   
     class MoreTypesPlus {
       constructor(runtime) {
-        this.runtime = runtime;
-        this.throwErr = (msg) => {
+        let jsValues = this
+        jsValues.runtime = runtime;
+        jsValues.throwErr = (msg) => {
           throw msg;
         }
         const stores = new Map();
-        this.getStore = function(thread, str) {
+        jsValues.getStore = function(thread, str) {
           if (!stores.get(thread)) {
             stores.set(thread, {[str]: {}});
           }
@@ -59,13 +60,13 @@
           }
           return stores.get(thread)[str];
         }
-        this.retireStore= function(thread, str) {
-          const store = this.getStore(thread, str);
+        jsValues.retireStore= function(thread, str) {
+          const store = jsValues.getStore(thread, str);
           const val = store[str];
           delete store[str]; 
           return val;
         }
-        this._GETVAR = function _GETVAR(varName) {
+        jsValues._GETVAR = function _GETVAR(varName) {
           const targets = runtime.targets;
           for (const targetIdx in targets) {
             const target = targets[targetIdx];
@@ -81,7 +82,7 @@
           }
           return [false, "undefined"];
         }
-        this._SETVAR = function _SETVAR(varName, value) {
+        jsValues._SETVAR = function _SETVAR(varName, value) {
           const targets = runtime.targets;
           let varFound = false;
           for (const targetIdx in targets) {
@@ -101,7 +102,7 @@
             throw "Variable \"" + varName + "\" not found"
           }
         }
-        this._GENERATEVARID = function _GENERATEVARID() {
+        jsValues._GENERATEVARID = function _GENERATEVARID() {
           const varIdCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#%()*+,-./:;=?@[]^_`{|}~";
           let token = '';
           for (let i = 0; i < 20; i++) {
@@ -111,20 +112,20 @@
           return token;
         }
           
-        this._CREATEVAR = function _CREATEVAR(targetIdx, varName) {
-          if (this._GETVAR(varName)[0]) {
+        jsValues._CREATEVAR = function _CREATEVAR(targetIdx, varName) {
+          if (jsValues._GETVAR(varName)[0]) {
             return; // if var alredy exists, do nothing
           }
           const targets = runtime.targets;
           const target = targets[targetIdx];
-          const id = this._GENERATEVARID();
+          const id = jsValues._GENERATEVARID();
           while (target.variables.hasOwnProperty(id)) {
-            const id = this._GENERATEVARID();
+            const id = jsValues._GENERATEVARID();
           }
           target.lookupOrCreateVariable(id, varName);
         }
         
-        this._DELETEVAR = function _DELETEVAR(varName) {
+        jsValues._DELETEVAR = function _DELETEVAR(varName) {
           const targets = runtime.targets;
           for (const targetIdx in targets) {
             const target = targets[targetIdx];
@@ -139,63 +140,63 @@
             }
           }
         }
-        this.typeof = function TYPEOF(value) {
+        jsValues.typeof = function TYPEOF(value) {
           let isPrimitive = Object(value) !== value;
           if (isPrimitive) {
             let type = Object.prototype.toString.call(value).slice(8, -1).toLowerCase()
             return type;
           }
-          if (value === this.Nothing) {
+          if (value === jsValues.Nothing) {
             return "nothing"; // its basically just undefined.
           }
-          if (value instanceof this.Object) {
+          if (value instanceof jsValues.Object) {
             return "Object";
           }
-          if (value instanceof this.Array) {
+          if (value instanceof jsValues.Array) {
             return "Array";
           }
-          if (value instanceof this.Set) {
+          if (value instanceof jsValues.Set) {
             return "Set"
           }
-          if (value instanceof this.Map) {
+          if (value instanceof jsValues.Map) {
             return "Map"
           }
-          if (value instanceof this.Symbol) {
+          if (value instanceof jsValues.Symbol) {
             return "Symbol"
           }
-          if (value instanceof this.Function) {
+          if (value instanceof jsValues.Function) {
             return "Function"
           }
-          if (value instanceof this.Class) {
+          if (value instanceof jsValues.Class) {
             return "Class"
           }
           return "unknown"
         }
-        this.clone = function CLONE(value) {
-          if (this.typeof(value) === "Object") {
-            return new (this.Object)(structuredClone(value.__values))
-          } else if (this.typeof(value) === "Array") {
-            return new (this.Array)(structuredClone(value.__values))
-          } else if (this.typeof(value) === "Set") {
-            return new (this.Set)(structuredClone(value.__values))
-          } else if (this.typeof(value) === "Map") {
-            return new (this.Map)(structuredClone(value.__values))
-          } else if (this.typeof(value) === "RegularExpression") {
-            return new (this.RegExp)(structuredClone(value.__values))
-          } else if (this.typeof(value) === "Function") {
+        jsValues.clone = function CLONE(value) {
+          if (jsValues.typeof(value) === "Object") {
+            return new (jsValues.Object)(structuredClone(value.__values))
+          } else if (jsValues.typeof(value) === "Array") {
+            return new (jsValues.Array)(structuredClone(value.__values))
+          } else if (jsValues.typeof(value) === "Set") {
+            return new (jsValues.Set)(structuredClone(value.__values))
+          } else if (jsValues.typeof(value) === "Map") {
+            return new (jsValues.Map)(structuredClone(value.__values))
+          } else if (jsValues.typeof(value) === "RegularExpression") {
+            return new (jsValues.RegExp)(structuredClone(value.__values))
+          } else if (jsValues.typeof(value) === "Function") {
             throw "Cannot clone a function."
           } 
-          throw `Attempted to clone value of type ${this.typeof(value)}`
+          throw `Attempted to clone value of type ${jsValues.typeof(value)}`
         }
 
-        this.resetState = function () {
-          this.functionDefLayers = [];
-          this.functionCallLayers = [];
-          this.functionScopeLayers = [];
+        jsValues.resetState = function () {
+          jsValues.functionDefLayers = [];
+          jsValues.functionCallLayers = [];
+          jsValues.functionScopeLayers = [];
         }        
-        this.resetState();
+        jsValues.resetState();
 
-        this.TempFunctionDef = class TempFunctionDef {
+        jsValues.TempFunctionDef = class TempFunctionDef {
           constructor() {
             this.args = [];
             this.argDefaults = {};
@@ -214,20 +215,20 @@
             return this.argDefaults[name];
           }
         }
-        this.enterFunctionDef = function () {
-          this.functionDefLayers.push(new this.TempFunctionDef());
+        jsValues.enterFunctionDef = function () {
+          jsValues.functionDefLayers.push(new jsValues.TempFunctionDef());
         }
-        this.exitFunctionDef = function () {
-          if (this.functionDefLayers.length === 0) {
+        jsValues.exitFunctionDef = function () {
+          if (jsValues.functionDefLayers.length === 0) {
             throw "Internal Error";
           }
-          return this.functionDefLayers.pop();
+          return jsValues.functionDefLayers.pop();
         }
-        this.defineFunctionDefArg = function (name) {
-          if (this.functionDefLayers.length === 0) {
+        jsValues.defineFunctionDefArg = function (name) {
+          if (jsValues.functionDefLayers.length === 0) {
             throw '"Define Argument" cannot be used outside a function definition block.';
           }
-          const fdef = this.functionDefLayers[this.functionDefLayers.length-1];
+          const fdef = jsValues.functionDefLayers[jsValues.functionDefLayers.length-1];
           if (fdef.hasArg(name)) {
             throw `Argument ${name} alredy exists`;
           }
@@ -236,11 +237,11 @@
           }
           fdef.args.push(name);
         }
-        this.addOptionalFunctionDefArg = function (name, defaultVal) {
-          if (this.functionDefLayers.length === 0) {
+        jsValues.addOptionalFunctionDefArg = function (name, defaultVal) {
+          if (jsValues.functionDefLayers.length === 0) {
             throw '"Define Argument with Default" cannot be used outside a function definition block.';
           }
-          const fdef = this.functionDefLayers[this.functionDefLayers.length-1];
+          const fdef = jsValues.functionDefLayers[jsValues.functionDefLayers.length-1];
           if (fdef.hasArg(name)) {
             throw `Argument ${name} alredy exists`;
           }
@@ -249,7 +250,7 @@
           fdef.hasOptionalArgs = true;
         }
         
-        this.TempFunctionCall = class TempFunctionCall {
+        jsValues.TempFunctionCall = class TempFunctionCall {
           constructor(fdef) {
             this.fdef          = fdef;
             this.setArgValues  = {};
@@ -269,23 +270,23 @@
             return argValues;
           }
         }
-        this.enterFunctionCall = function (fdef) {
+        jsValues.enterFunctionCall = function (fdef) {
           if (fdef === undefined || fdef === null) {
-            fdef = new this.TempFunctionDef();
+            fdef = new jsValues.TempFunctionDef();
           }
-          this.functionCallLayers.push(new this.TempFunctionCall(fdef));
+          jsValues.functionCallLayers.push(new jsValues.TempFunctionCall(fdef));
         }
-        this.exitFunctionCall = function () {
-          if (this.functionCallLayers.length === 0) {
+        jsValues.exitFunctionCall = function () {
+          if (jsValues.functionCallLayers.length === 0) {
             throw "Internal Error";
           }
-          return this.functionCallLayers.pop();
+          return jsValues.functionCallLayers.pop();
         }
-        this.setNextFunctionCallArg = function (value) {
-          if (this.functionCallLayers.length === 0) {
+        jsValues.setNextFunctionCallArg = function (value) {
+          if (jsValues.functionCallLayers.length === 0) {
             throw '"set next call argument" cannot be used outside a function call block".';
           }
-          const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
+          const fcall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
           const argIndex = Object.keys(fcall.setArgValues).length;
           if (argIndex >= fcall.fdef.args.length) {
             throw "Attempted setting more arguments then were defined.";
@@ -295,11 +296,11 @@
           }
           fcall.setArgValues[fcall.fdef.args[argIndex]] = value;
         }
-        this.setFunctionCallArgByName = function (name, value) {
-          if (this.functionCallLayers.length === 0) {
+        jsValues.setFunctionCallArgByName = function (name, value) {
+          if (jsValues.functionCallLayers.length === 0) {
             throw '"set call argument by name" cannot be used outside a function call block".';
           }
-          const fcall = this.functionCallLayers[this.functionCallLayers.length-1];
+          const fcall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
           if (!fcall.fdef.hasArg(name)) {
             throw "Attempted setting an argument, which was never defined.";
           }
@@ -310,22 +311,22 @@
           fcall.setArgsByName = true;
         }
 
-        this.TempScope = class TempScope {
+        jsValues.TempScope = class TempScope {
           constructor(args) {
             this.args = args;
           }
         }
-        this.enterScope = function (args) {
-          this.functionScopeLayers.push(new this.TempScope(args));
+        jsValues.enterScope = function (args) {
+          jsValues.functionScopeLayers.push(new jsValues.TempScope(args));
         }
-        this.exitScope = function () {
-          return this.functionScopeLayers.pop();
+        jsValues.exitScope = function () {
+          return jsValues.functionScopeLayers.pop();
         }
-        this.getFunctionArgument = function (name) {
-          if (this.functionScopeLayers.length === 0) {
+        jsValues.getFunctionArgument = function (name) {
+          if (jsValues.functionScopeLayers.length === 0) {
             throw '"get argument" cannot be used outside a function or class definition block, which has a "prepare" substack.';
           }
-          const scope = this.functionScopeLayers[this.functionScopeLayers.length-1];
+          const scope = jsValues.functionScopeLayers[jsValues.functionScopeLayers.length-1];
           if (!scope.args.hasOwnProperty(name)) {
             throw `Argument ${name} was never defined.`;
           }
@@ -333,7 +334,7 @@
         }
         
 
-        this.Object = class PlainObject {
+        jsValues.Object = class PlainObject {
           constructor(obj) {
             this.__values = obj || {};
           }
@@ -342,13 +343,13 @@
               throw "Attempted to index <Object> with a non-string and non-symbol key. ";
             }
             let exists = Object.hasOwn(this.__values, key);
-            if (!exists) return this.Nothing;
+            if (!exists) return jsValues.Nothing;
             let value = this.__values[key];
-            if (this.typeof(value) === "unknown") {
-              return this.Nothing;
+            if (jsValues.typeof(value) === "unknown") {
+              return jsValues.Nothing;
             }
             if (value === undefined) {
-              return this.Nothing;
+              return jsValues.Nothing;
             }
             return value;
           }
@@ -356,10 +357,10 @@
             if (typeof key !== "string" && typeof key !== "Symbol") {
               throw "Attempted to set property of <Object> with a non-string and non-symbol key. ";
             }
-            if (this.typeof(value) === "unknown") {
+            if (jsValues.typeof(value) === "unknown") {
               throw `Attempted to set property of <Object> with unknown value: ${value}`;
             }
-            return this.__values[(this.typeof(key) === "Symbol") ? key.symbol : key] = value;
+            return this.__values[(jsValues.typeof(key) === "Symbol") ? key.symbol : key] = value;
           }
           delete(key) {
             return (delete this.__values[key]);
@@ -374,14 +375,14 @@
             return Object.values(this.__values).length;
           }
           has(key) {
-            return this.get(key) !== this.Nothing;
+            return this.get(key) !== jsValues.Nothing;
           }
           toJSON() {
             return "Objects do not save.";
           }
         }
-        this.Object.prototype.type = "PlainObject";
-        this.Array = class Array{
+        jsValues.Object.prototype.type = "PlainObject";
+        jsValues.Array = class Array{
           constructor(arr) {
             this.__values = arr || [];
           }
@@ -395,7 +396,7 @@
             }
             let value = this.__values[key];
             if (value === undefined) {
-              return this.Nothing;
+              return jsValues.Nothing;
             }
             return value;
           }
@@ -410,7 +411,7 @@
             if (key > 12e6) {
               throw "The maximum index for an array is 12 million. ";
             }
-            if (this.typeof(value) === "unknown") {
+            if (jsValues.typeof(value) === "unknown") {
               throw `Attempted to set property of <Array> with unknown value: ${value}`;
             }
             return this.__values[key] = value;
@@ -422,7 +423,7 @@
             return this.__values.push(value);
           }
           has(num) {
-            return this.get(num) !== this.Nothing;
+            return this.get(num) !== jsValues.Nothing;
           }
           setLength(num) {
             let len = this.__values.length;
@@ -430,7 +431,7 @@
             if (num < len) return this.__values.length = num;
             // It must be larger
             for (let i = len; i < num; i++) {
-              this.__values.push(this.Nothing);
+              this.__values.push(tjsValueshis.Nothing);
             }
             return num;
           }
@@ -447,8 +448,8 @@
             return "Arrays do not save.";
           }
         };
-        this.Array.prototype.type = "Array";
-        this.Set = class Set {
+        jsValues.Array.prototype.type = "Array";
+        jsValues.Set = class Set {
           constructor(obj) {
             this.__values = obj || new (globalThis.Set)();
           }
@@ -483,8 +484,8 @@
             return "Sets do not save."
           }
         }
-        this.Set.prototype.type = "Set";
-        this.Map = class Map {
+        jsValues.Set.prototype.type = "Set";
+        jsValues.Map = class Map {
           constructor(obj) {
             this.__values = obj || new (globalThis.Map)();
           }
@@ -516,11 +517,11 @@
             return "Maps do not save.";
           }
         }
-        this.Map.prototype.type = "Map";	    
+        jsValues.Map.prototype.type = "Map";	    
         
-        this.Symbol = class SymbolContainer {
+        jsValues.Symbol = class SymbolContainer {
           constructor() {
-            this.symbol = Symbol();
+            jsValues.symbol = Symbol();
           }
           toString() {
             return `<Symbol>`;
@@ -529,9 +530,9 @@
             return "Symbols do not save.";
           }
         }
-        this.Symbol.prototype.type = "symbol";
+        jsValues.Symbol.prototype.type = "symbol";
 
-        this.Function = class Function {
+        jsValues.Function = class Function {
           constructor(func, fdef) {
             this.func     = func;
             this.fdef     = fdef;
@@ -547,7 +548,7 @@
             return this.func.call(thisVal);
           }
         }
-        /*this.RegExp = class RegularExpression {
+        /*jsValues.RegExp = class RegularExpression {
           constructor(obj) {
             this.__values = obj || new RegExp();
           }
@@ -561,14 +562,14 @@
             return "Regular Expbressions do not save. "
           }
         }
-        this.RegExp.prototype.type = "RegularExpression";
+        jsValues.RegExp.prototype.type = "RegularExpression";
         
-        this.forEach = (value, func) => {
-          if (this.typeof(value) === "Map") {
+        jsValues.forEach = (value, func) => {
+          if (jsValues.typeof(value) === "Map") {
             return value.__values.forEach(func);
-          } else if (this.typeof(value) === "Set") {
+          } else if (jsValues.typeof(value) === "Set") {
             return (new Map(Object.entries(Array.from(value.__values)))).forEach(func);
-          } else if ((this.typeof(value) === "Object" || this.typeof(value) === "Array" || this.typeof(value) === "string")) {
+          } else if ((jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "string")) {
             // String is a special case here, that we will allow
             return (new Map(Object.entries(value.__values || value))).forEach(func);
           } else {
@@ -576,19 +577,19 @@
             throw "Attempted to iterate over something that is not iterable. "
           }
         }*/
-        this.toIterable = (value) => {
+          jsValues.toIterable = (value) => {
           // since forEach does not allow continue, i have to use toIterable.
-          if (this.typeof(value) === "Map" || this.typeof(value) === "Set" || this.typeof(value) === "Array") {
+          if (jsValues.typeof(value) === "Map" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Array") {
             return value.__values.entries(); // set.prototype.entries is a joke
-          } else if (this.typeof(value) === "Object") {
+          } else if (jsValues.typeof(value) === "Object") {
             return Object.entries(value.__values);
-          } else if (this.typeof(value) === "string") {
+          } else if (jsValues.typeof(value) === "string") {
             return Array.from(value).entries();
           }
           throw "Attempted to create an iterable for something that is not iterable.";
         }
         
-        this.NothingClass = class Nothing extends Object.assign(function(){}, {prototype: null}) {
+        jsValues.NothingClass = class Nothing extends Object.assign(function(){}, {prototype: null}) {
           get toString() {
             return () => "<Nothing>";
           }
@@ -599,10 +600,10 @@
             return "Nothing does not save.";
           }
         }
-        this.NothingClass.prototype.type = "Nothing";
-        this.Nothing = new (this.NothingClass);
+        jsValues.NothingClass.prototype.type = "Nothing";
+        jsValues.Nothing = new (jsValues.NothingClass);
         
-        this.pcall = (func, target) => {
+        jsValues.pcall = (func, target) => {
           try {
             return func(target);
           } catch(e) {
@@ -613,7 +614,7 @@
           }
         }
         
-        this.pconstruct = (constructor) => {
+        jsValues.pconstruct = (constructor) => {
           try {
             return new constructor();
           } catch(e) {
@@ -621,10 +622,11 @@
           }
         }
         
-        this.Class = class Class { // wrapper class for classes
+        jsValues.Class = class Class { // wrapper class for classes
           constructor(someClass) {
             this.class = someClass;
             this.class.WRAPPER = this;
+            console.log("init", this);
           }
           toString() {
             return "<Class>";
@@ -633,28 +635,28 @@
             return "Classes do not save";
           }
         }
-        this.__methodsOfObjects = new WeakMap();
-        this.appendMethod = (obj, name, method) => {
-          if (typeof obj !== "object" || !obj) throw "Attempted to append method on invalid value " + obj; // im too lazy to check if its a this object
-          if (!(this.__methodsOfObjects.has(obj))) {
-            this.__methodsOfObjects.set(obj, Object.create(null));
+        jsValues.__methodsOfObjects = new WeakMap();
+        jsValues.appendMethod = (obj, name, method) => {
+          if (typeof obj !== "object" || !obj) throw "Attempted to append method on invalid value " + obj; // im too lazy to check if its a jsValues object
+          if (!(jsValues.__methodsOfObjects.has(obj))) {
+            jsValues.__methodsOfObjects.set(obj, Object.create(null));
           }
-          if (this.typeof(method) !== "Function") throw "Attempted to append method, but the method is not a function.";
-          if (Object.hasOwn(this.__methodsOfObjects.get(obj), name)) {
+          if (jsValues.typeof(method) !== "Function") throw "Attempted to append method, but the method is not a function.";
+          if (Object.hasOwn(jsValues.__methodsOfObjects.get(obj), name)) {
             throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
-          return this.__methodsOfObjects.get(obj)[name] = method;
+          return jsValues.__methodsOfObjects.get(obj)[name] = method;
         }
-        this.executeMethod = (obj, name) => {
-          if (!this.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
-          const methods = this.__methodsOfObjects.get(obj);
+        /*jsValues.executeMethod = (obj, name) => {
+          if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
+          const methods = jsValues.__methodsOfObjects.get(obj);
           
           if (!methods) {
             // Try to find this method on its class
             if (obj.constructor?.WRAPPER) {
               const wrapper = obj.constructor.WRAPPER;
-              if (this.__methodsOfObjects.get(wrapper)?.[name]) {
-                return this.__methodsOfObjects.get(wrapper)[name].callWithThis(obj);
+              if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
+                return jsValues.__methodsOfObjects.get(wrapper)[name].callWithThis(obj);
               }
               let success = false;
               let oldWrapper = wrapper;
@@ -663,8 +665,8 @@
                 const newWrapper = Object.getPrototypeOf(oldWrapper.class).WRAPPER;
                 let method = null;
                 if (!newWrapper) break;
-                if (method = this.__methodsOfObjects.get(newWrapper)?.[name]) {
-                  method.callWithThis(obj);
+                if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
+                  return method.callWithThis(obj);
                 }
                 oldWrapper = newWrapper; // go to next iteration
               }
@@ -675,33 +677,64 @@
             throw `Attempted to call non-existent method ${name} on ${obj}`;
           }
           return methods[name].callWithThis(obj)
+        }*/
+        jsValues.getMethod = (obj, name) => {
+          if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
+          const methods = jsValues.__methodsOfObjects.get(obj);
+          
+          if (!methods) {
+            // Try to find this method on its class
+            if (obj.constructor?.WRAPPER) {
+              const wrapper = obj.constructor.WRAPPER;
+              if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
+                return jsValues.__methodsOfObjects.get(wrapper)[name];
+              }
+              let success = false;
+              let oldWrapper = wrapper;
+              while (true) {
+                // Keep looking
+                const newWrapper = Object.getPrototypeOf(oldWrapper.class).WRAPPER;
+                let method = null;
+                if (!newWrapper) break;
+                if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
+                  return method;
+                }
+                oldWrapper = newWrapper; // go to next iteration
+              }
+            }
+            throw `Attempted to call non-existent method ${name} on ${obj}`;
+          }
+          if (!methods[name]) {
+            throw `Attempted to call non-existent method ${name} on ${obj}`;
+          }
+          return methods[name];
         }
         // OOP Helper functions
-        this.canConstruct = (value) => {
-          return this.typeof(value) === "Class" && (typeof value.class.prototype.init) === "function";
+        jsValues.canConstruct = (value) => {
+          return jsValues.typeof(value) === "Class" && (typeof value.class.prototype.init) === "function";
         }
-        this.inheritsFrom = (value, otherClass) => {
-          return value.class.prototype instanceof (this.typeof(value) === "Class" ? value.class : value);
+        jsValues.inheritsFrom = (value, otherClass) => {
+          return value.class.prototype instanceof (jsValues.typeof(value) === "Class" ? value.class : value);
         }
-        this.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
-          if (this.canConstruct(value)) {
+        jsValues.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
+          if (jsValues.canConstruct(value)) {
             const instance = new (value.class)();
             return (yield* instance.init());
           } else {
             throw "Attempted to construct from non-class.";
           }
         }
-        this.getClassToExtend = (strOrClass, isForInstanceof) => {
-          if (this.typeof(strOrClass) === "Class") return strOrClass.class;
+        jsValues.getClassToExtend = (strOrClass, isForInstanceof) => {
+          if (jsValues.typeof(strOrClass) === "Class") return strOrClass.class;
           switch (strOrClass) {
             case ("Object"):
-              return this.Object;
+              return jsValues.Object;
             case ("Array"):
-              return this.Array;
+              return jsValues.Array;
             case ("Set"):
-              return this.Set;
+              return jsValues.Set;
             case ("Map"):
-              return this.Map;
+              return jsValues.Map;
             default:
               if (!isForInstanceof) {
                 throw "Tried to extend invalid value";
@@ -710,10 +743,10 @@
               }
           }
         }
-        this.isObject = (value) => {
-          return (this.typeof(value) === "Object" || this.typeof(value) === "Array" || this.typeof(value) === "Set" || this.typeof(value) === "Map");
+        jsValues.isObject = (value) => {
+          return (jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Map");
         }
-        this.trySuper = function* (thisVal) {
+        jsValues.trySuper = function* (thisVal) {
           const constructor = thisVal.constructor;
           const superClasses = [];
           if (constructor) {
@@ -721,7 +754,7 @@
             let oldClass = constructor;
             while (true) {
               const superClass = Object.getPrototypeOf(oldClass);
-              if (!(superClass === Function || superClass === this.Object || superClass === this.Array || superClass === this.Set || superClass === this.Map) && !(superClass == null)) {
+              if (!(superClass === Function || superClass === jsValues.Object || superClass === jsValues.Array || superClass === jsValues.Set || superClass === jsValues.Map) && !(superClass == null)) {
                 superClasses.unshift(superClass); // Use unshift to mimic the behavior of super in javascript.
                 //(yield* (superClass.prototype.init.call(thisVal, true)))
               } else {
@@ -934,7 +967,7 @@
               func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
               text: "add [VALUE] to the end of [OBJECT]",
-              tooltip: "this-explanatory",
+              tooltip: "self-explanatory",
               arguments: {
                 VALUE: {
                   type: Scratch.ArgumentType.STRING,
@@ -1045,7 +1078,7 @@
               blockType: Scratch.BlockType.OUTPUT, // basically just undefined
               disableMonitor: true,
               branchCount: 1,
-              text: "Anonymous Function"
+              text: "anonymous function"
             },
             {
               opcode: "prepareAndCreateAnonymousFunction",
@@ -1055,7 +1088,7 @@
               blockType: Scratch.BlockType.OUTPUT, // basically just undefined
               disableMonitor: true,
               branchCount: 2,
-              text: ["prepare", "and create Anonymous Function"],
+              text: ["prepare", "and create anonymous function"],
               tooltip: "Allows the definition of arguments before creating a function.",
             },
             {
@@ -1134,7 +1167,7 @@
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              text: "call function [FUNCTION] and get return value",
+              text: "call function [FUNCTION]",
               tooltip: "Executes a function. ",
               arguments: {
                FUNCTION: {
@@ -1279,7 +1312,44 @@
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               tooltip: "Calls a method with a \"this\" value",
-              text: "call method with name [NAME] on [VALUE] and get return value",
+              text: "call method with name [NAME] on [VALUE]",
+              arguments: {
+                NAME: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "foo"
+                },
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Insert Object / Array / Set / Map Here"
+                }
+              }
+            },
+            {
+              opcode: "prepareAndCallMethod",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              branchCount: 1,
+              tooltip: "Calls a method with a \"this\" value after preperation.",
+              text: ["prepare", "and call method with name [NAME] on [VALUE]"],
+              arguments: {
+                NAME: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "foo"
+                },
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Insert Object / Array / Set / Map Here"
+                }
+              }
+            },
+            {
+              opcode: "prepareAndCallMethodOutput",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              branchCount: 1,
+              tooltip: "Calls a method with a \"this\" value after preperation.",
+              text: ["prepare", "and call method with name [NAME] on [VALUE]"],
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
@@ -1550,6 +1620,18 @@
               kind: "input",
               name: generator.descendInputOfBlock(block, "NAME"),
               obj: generator.descendInputOfBlock(block, "VALUE")
+            }),
+            prepareAndCallMethod: (generator, block) => (generator.script.yields = true, {
+              kind: "stack",
+              name: generator.descendInputOfBlock(block, "NAME"),
+              obj: generator.descendInputOfBlock(block, "VALUE"),
+              prepare: generator.descendSubstack(block, "SUBSTACK" ),
+            }),
+            prepareAndCallMethodOutput: (generator, block) => (generator.script.yields = true, {
+              kind: "input",
+              name: generator.descendInputOfBlock(block, "NAME"),
+              obj: generator.descendInputOfBlock(block, "VALUE"),
+              prepare: generator.descendSubstack(block, "SUBSTACK" ),
             }),
             construct: (generator, block) => (generator.script.yields = true, {
               kind: "input",
@@ -1892,18 +1974,76 @@
               compiler.source += `runtime.ext_moreTypesPlus.appendMethod(${obj}, ${name}, ${method});\n`;
             },
             callMethod: (node, compiler, imports) => {
-              // executeMethod(obj, name)
+              // getMethod(obj, name).callWithThis(obj)
               const obj = compiler.descendInput(node.obj).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
-              
-              compiler.source += `(yield* (runtime.ext_moreTypesPlus.executeMethod(${obj}, ${name})));`
+              const local = compiler.localVariables.next();
+              compiler.source += `(yield* (
+                ${local} = ${obj},
+                runtime.ext_moreTypesPlus.getMethod(${local}, ${name}).callWithThis(${local})
+              ));`;
             },
             callMethodOutput: (node, compiler, imports) => {
-              // executeMethod(obj, name)
+              // getMethod(obj, name).callWithThis(obj)
               const obj = compiler.descendInput(node.obj).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
-              
-              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.executeMethod(${obj}, ${name})))`, imports.TYPE_UNKNOWN)
+              const local = compiler.localVariables.next();              
+              return new (imports.TypedInput)(`(yield* (
+                ${local} = ${obj},
+                runtime.ext_moreTypesPlus.getMethod(${local}, ${name}).callWithThis(${local})
+              ))`, imports.TYPE_UNKNOWN);
+            },
+            prepareAndCallMethod: (node, compiler, imports) => {
+              const obj = compiler.descendInput(node.obj).asUnknown();
+              const name = compiler.descendInput(node.name).asUnknown();
+              const callLocal = compiler.localVariables.next();
+              const objLocal = compiler.localVariables.next();
+              const methodLocal = compiler.localVariables.next();
+
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              const generatedJS =`(yield* (
+                ${objLocal} = ${obj},
+                ${methodLocal} = runtime.ext_moreTypesPlus.getMethod(${objLocal}, ${name}),
+                (function* () {
+                  console.log("method", ${methodLocal});
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
+                  try {  ${prepareSrc}  }
+                  finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
+                  try {  yield* ${methodLocal}.callWithThis(${objLocal});  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
+                })()
+              ));`;
+              compiler.source += generatedJS;
+            },
+            prepareAndCallMethodOutput: (node, compiler, imports) => {
+              const obj = compiler.descendInput(node.obj).asUnknown();
+              const name = compiler.descendInput(node.name).asUnknown();
+              const callLocal = compiler.localVariables.next();
+              const objLocal = compiler.localVariables.next();
+              const methodLocal = compiler.localVariables.next();
+
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              const generatedJS =`(yield* (
+                ${objLocal} = ${obj},
+                ${methodLocal} = runtime.ext_moreTypesPlus.getMethod(${objLocal}, ${name}),
+                (function* () {
+                  console.log("method", ${methodLocal});
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
+                  try {  ${prepareSrc}  }
+                  finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
+                  try {  return yield* ${methodLocal}.callWithThis(${objLocal});  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
+                })()
+              ))`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
             construct: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
