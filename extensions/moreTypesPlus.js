@@ -323,7 +323,7 @@
         }
         this.getFunctionArgument = function (name) {
           if (this.functionScopeLayers.length === 0) {
-            throw '"get argument" cannot be used outside a function or class definition block".';
+            throw '"get argument" cannot be used outside a function or class definition block, which has a "prepare" substack.';
           }
           const scope = this.functionScopeLayers[this.functionScopeLayers.length-1];
           if (!scope.args.hasOwnProperty(name)) {
@@ -1674,40 +1674,13 @@
               const local = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-
               const generatedJS = `(yield* (
                 ${local} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function"
-                  ? ${local}.call()
-                  : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
-                )
-              ));`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
-            },
-            prepareAndCallFunctionOutput: (node, compiler, imports) => {
-              const local1 = compiler.localVariables.next();
-              const local2 = compiler.localVariables.next();
-              const func = compiler.descendInput(node.func);            
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.prepare, new (imports.Frame)(false));
-              const prepareSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
-              
-              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              const generatedJS = `(yield* (
-                ${local1} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
-                  (function* (){})() : // Do nothing wait for later
-                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
-                (function* (){
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
-                  try {  ${prepareSrc}  }
-                  finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
-                  try {  return yield* ${local1}.call();  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ));`;
+                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function") ?
+                    ${local}.call() :
+                    runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+              ))`;
+              console.log(generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             prepareAndCallFunction: (node, compiler, imports) => {
@@ -1734,7 +1707,35 @@
                   finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ));`;
+              console.log("=>", generatedJS);
               compiler.source += generatedJS;
+            },
+            prepareAndCallFunctionOutput: (node, compiler, imports) => {
+              const local1 = compiler.localVariables.next();
+              const local2 = compiler.localVariables.next();
+              const func = compiler.descendInput(node.func);            
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
+              const generatedJS = `(yield* (
+                ${local1} = ${func.asUnknown()},
+                (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
+                  (function* (){})() : // Do nothing wait for later
+                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
+                (function* (){
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
+                  try {  ${prepareSrc}  }
+                  finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
+                  try {  return yield* ${local1}.call();  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
+                })()
+              ))`;
+              console.log("=>", generatedJS);
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             setNextCallArgument: (node, compiler, imports) => {
               const value = compiler.descendInput(node.value);
