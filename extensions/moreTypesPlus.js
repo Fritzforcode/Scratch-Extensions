@@ -544,8 +544,8 @@
           call() {
             return this.func();
           }
-          callWithThis(thisVal) {
-            return this.func.call(thisVal);
+          callWithThis(thisVal, returnThis) {
+            return this.func.call(thisVal, returnThis);
           }
         }
         /*jsValues.RegExp = class RegularExpression {
@@ -645,7 +645,9 @@
           if (Object.hasOwn(jsValues.__methodsOfObjects.get(obj), name)) {
             throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
-          return jsValues.__methodsOfObjects.get(obj)[name] = method;
+
+          jsValues.__methodsOfObjects.get(obj)[name] = method;
+          return obj;
         }
         /*jsValues.executeMethod = (obj, name) => {
           if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
@@ -656,7 +658,7 @@
             if (obj.constructor?.WRAPPER) {
               const wrapper = obj.constructor.WRAPPER;
               if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
-                return jsValues.__methodsOfObjects.get(wrapper)[name].callWithThis(obj);
+                return jsValues.__methodsOfObjects.get(wrapper)[name].callWithThis(obj, false);
               }
               let success = false;
               let oldWrapper = wrapper;
@@ -666,7 +668,7 @@
                 let method = null;
                 if (!newWrapper) break;
                 if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
-                  return method.callWithThis(obj);
+                  return method.callWithThis(obj, false);
                 }
                 oldWrapper = newWrapper; // go to next iteration
               }
@@ -676,9 +678,9 @@
           if (!methods[name]) {
             throw `Attempted to call non-existent method ${name} on ${obj}`;
           }
-          return methods[name].callWithThis(obj)
+          return methods[name].callWithThis(obj, false)
         }*/
-        jsValues.getMethod = (obj, name) => {
+        jsValues.getObjMethod = (obj, name) => {
           if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
           const methods = jsValues.__methodsOfObjects.get(obj);
           
@@ -689,7 +691,6 @@
               if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
                 return jsValues.__methodsOfObjects.get(wrapper)[name];
               }
-              let success = false;
               let oldWrapper = wrapper;
               while (true) {
                 // Keep looking
@@ -709,40 +710,47 @@
           }
           return methods[name];
         }
+        jsValues.getClassMethod = (cls, name) => {
+          if (jsValues.typeof(cls) !== "Class") {
+            throw `Attempted to get method on invalid receiver ${cls}`;
+          }
+          let currentClass = cls;
+          while (currentClass) {
+            const methods = jsValues.__methodsOfObjects.get(currentClass);
+            if (methods?.[name]) {
+              return methods[name];
+            }
+            currentClass = Object.getPrototypeOf(currentClass);
+          }
+          throw `Attempted to call non-existent method ${name} on ${cls.name}`;
+        }
         jsValues.getSuperMethod = (obj, name) => {
-            if (!jsValues.isObject(obj)) {
-                throw new Error(`Attempted to call method on invalid receiver ${obj}`);
+          if (!jsValues.isObject(obj)) {
+            throw new Error(`Attempted to get method on invalid receiver ${obj}`);
+          }
+          let prototype = Object.getPrototypeOf(obj);
+          while (prototype) {
+            const methods = jsValues.__methodsOfObjects.get(prototype);
+            if (methods && methods[name]) {
+              return methods[name];
             }
-        
-            let prototype = Object.getPrototypeOf(obj);
-        
-            while (prototype) {
-                const methods = jsValues.__methodsOfObjects.get(prototype);
-                if (methods && methods[name]) {
-                    return methods[name];
+            if (prototype.constructor?.WRAPPER) {
+              let wrapper = prototype.constructor.WRAPPER;
+              while (wrapper) {
+                const wrapperMethods = jsValues.__methodsOfObjects.get(wrapper);
+                if (wrapperMethods?.[name]) {
+                  return wrapperMethods[name];
                 }
-        
-                // If there's a WRAPPER class, check its methods
-                if (prototype.constructor?.WRAPPER) {
-                    let wrapper = prototype.constructor.WRAPPER;
-                    while (wrapper) {
-                        const wrapperMethods = jsValues.__methodsOfObjects.get(wrapper);
-                        if (wrapperMethods?.[name]) {
-                            return wrapperMethods[name];
-                        }
-                        wrapper = Object.getPrototypeOf(wrapper.class)?.WRAPPER;
-                    }
-                }
-        
-                // Move up the prototype chain
-                prototype = Object.getPrototypeOf(prototype);
+                wrapper = Object.getPrototypeOf(wrapper.class)?.WRAPPER;
+              }
             }
-        
-            throw new Error(`Attempted to call non-existent method ${name} on ${obj}`);
+            prototype = Object.getPrototypeOf(prototype);
+          }
+          throw new Error(`Attempted to call non-existent method ${name} on ${obj}`);
         }
         // OOP Helper functions
         jsValues.canConstruct = (value) => {
-          return (jsValues.typeof(value) === "Class") && (!!jsValues.getMethod(instance, "__init__"));
+          return (jsValues.typeof(value) === "Class") && (!!jsValues.getClassMethod(value, "__init__"));
         }
         jsValues.inheritsFrom = (value, otherClass) => {
           return value.class.prototype instanceof (jsValues.typeof(value) === "Class" ? value.class : value);
@@ -750,7 +758,7 @@
         jsValues.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
           if (jsValues.canConstruct(value)) {
             const instance = new (value.class)();
-            return (yield* jsValues.getMethod(instance, "__init__").callWithThis(instance));
+            return (yield* jsValues.getObjMethod(instance, "__init__").callWithThis(instance, true));
           } else {
             throw "Attempted to construct from non-class.";
           }
@@ -810,7 +818,7 @@
             this.makeLabel("If you hover over blocks,"),
             this.makeLabel("there will be a tooltip."),
             "---",
-            this.makeLabel("Variable Access"),
+            this.makeLabel("Variable Access and Utility"),
             {
               opcode: "getVar",
               blockType: Scratch.BlockType.REPORTER,
@@ -873,6 +881,17 @@
               text: "delete variable [VARIABLE]",
               arguments: {
                 VARIABLE: {
+                  type: Scratch.ArgumentType.STRING,
+                },
+              },
+            },
+            {
+              opcode: "ignoreReturnValue",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              text: "ignore return value [VALUE]",
+              arguments: {
+                VALUE: {
                   type: Scratch.ArgumentType.STRING,
                 },
               },
@@ -1295,6 +1314,20 @@
               }
             },
             {
+              opcode: "anonymousClassInit",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              disableMonitor: true,
+              text: "create anonymous class with __init__ [INIT]",
+              arguments: {
+                INIT: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Insert __init__ Function Here"
+                },
+              }
+            },
+            {
               opcode: "anonymousClassExtendsInit",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
@@ -1523,7 +1556,11 @@
             }),
             log: (generator, block) => ({
               kind: "stack",
-              contents: generator.descendInputOfBlock(block, "TXT")
+              contents: generator.descendInputOfBlock(block, "TXT"),
+            }),
+            ignoreReturnValue: (generator, block) => ({
+              kind: "stack",
+              value: generator.descendInputOfBlock(block, "VALUE"),
             }),
             newObject: (generator, block) => ({
               kind: "input",
@@ -1656,6 +1693,10 @@
               stack: generator.descendSubstack(block, "SUBSTACK"),
               "extends": generator.descendInputOfBlock(block, "CLASS")
             }),
+            anonymousClassInit: (generator, block) => ({
+              kind: "input",
+              init    : generator.descendInputOfBlock(block, "INIT" ),
+            }),
             anonymousClassExtendsInit: (generator, block) => ({
               kind: "input",
              "extends": generator.descendInputOfBlock(block, "CLASS"),
@@ -1720,6 +1761,10 @@
               //console.log(x)
               //console.log(compiler)
             },
+            ignoreReturnValue: (node, compiler, imports) => {
+              const value = compiler.descendInput(node.value);
+              compiler.source += `${value.asUnknown()};\n`;
+            },
             newObject: (node, compiler, imports) => {
               let object;
               switch (node.type) {
@@ -1747,9 +1792,16 @@
               compiler.descendStack(node.stack, new (imports.Frame)(false));
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
-              return new (imports.TypedInput)(
-                `new (runtime.ext_moreTypesPlus.Function)((function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}), null)`,
-              imports.TYPE_UNKNOWN)
+              const generatedJS = `new (runtime.ext_moreTypesPlus.Function)(
+                (function*(returnThis){
+                  try {
+                    ${stackSrc};
+                    return runtime.ext_moreTypesPlus.Nothing;
+                  }
+                  finally {  if (returnThis) return this;  }
+                }), null
+              )`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
             prepareAndCreateAnonymousFunction: (node, compiler, imports) => {
               const oldSrc = compiler.source;
@@ -1766,16 +1818,19 @@
 
               const generatedJS = `(yield* (
                 runtime.ext_moreTypesPlus.enterFunctionDef(),
-                function*() {
-                  try {  ${prepareSrc}  }
-                  finally {  ${fdefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
-                  return new (runtime.ext_moreTypesPlus.Function)(
-                    (function*() {
-                      ${funcCodeSrc};
-                      return runtime.ext_moreTypesPlus.Nothing;
-                    }), 
-                    ${fdefLocal}
-                  );
+                function*(returnThis) {
+                  try {
+                    try {  ${prepareSrc}  }
+                    finally {  ${fdefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                    return new (runtime.ext_moreTypesPlus.Function)(
+                      (function*(returnValue) {
+                        ${funcCodeSrc};
+                        return runtime.ext_moreTypesPlus.Nothing;
+                      }), 
+                      ${fdefLocal}
+                    );
+                  }
+                  finally {  if (returnThis) return this;  }
                 }()
               ))`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
@@ -2002,7 +2057,7 @@
                     return this; 
                   }
                 }
-              }, null)`, imports.TYPE_UNKNOWN)
+              })`, imports.TYPE_UNKNOWN)
             },
             anonymousClassExtends: (node, compiler, imports) => {
               const oldSrc = compiler.source;
@@ -2020,27 +2075,29 @@
                     return this;
                   }
                 }
-              }, null)`, imports.TYPE_UNKNOWN);
+              })`, imports.TYPE_UNKNOWN);
+            },
+            anonymousClassInit: (node, compiler, imports) => {
+              console.log("node", node);
+              const initFunc      = compiler.descendInput(node.init   );
+              
+              const generatedJS = `
+                runtime.ext_moreTypesPlus.appendMethod(new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
+                  constructor() {super()}
+                }), "__init__", ${initFunc.asUnknown()})
+              `;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             anonymousClassExtendsInit: (node, compiler, imports) => {
               console.log("node", node);
               const classToExtend = compiler.descendInput(node.extends);
               const initFunc      = compiler.descendInput(node.init   );
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.prepareCode, new(imports.Frame)(false));
-              compiler.source = oldSrc;
               
-              const fdefLocal  = compiler.localVariables.next();
-              const classLocal = compiler.localVariables.next();
-              
-              const generatedJS = `(yield* (
-                ${classLocal} = new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend(${classToExtend.asUnknown()})) {
+              const generatedJS = `
+                runtime.ext_moreTypesPlus.appendMethod(new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend(${classToExtend.asUnknown()})) {
                   constructor() {super()}
-                }, ${fdefLocal}),
-                runtime.ext_moreTypesPlus.appendMethod(${classLocal}, "__init__", ${initFunc.asUnknown()}),
-                ${classLocal}
-              ))`;
-              console.log("=>", generatedJS);
+                }), "__init__", ${initFunc.asUnknown()})
+              `;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             this: (node, compiler, imports) => {
@@ -2054,23 +2111,23 @@
               compiler.source += `runtime.ext_moreTypesPlus.appendMethod(${obj}, ${name}, ${method});\n`;
             },
             callMethod: (node, compiler, imports) => {
-              // getMethod(obj, name).callWithThis(obj)
+              // getObjMethod(obj, name).callWithThis(obj)
               const obj = compiler.descendInput(node.obj).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
               const local = compiler.localVariables.next();
               compiler.source += `(yield* (
                 ${local} = ${obj},
-                runtime.ext_moreTypesPlus.getMethod(${local}, ${name}).callWithThis(${local})
+                runtime.ext_moreTypesPlus.getObjMethod(${local}, ${name}).callWithThis(${local}, false)
               ));`;
             },
             callMethodOutput: (node, compiler, imports) => {
-              // getMethod(obj, name).callWithThis(obj)
+              // getObjMethod(obj, name).callWithThis(obj)
               const obj = compiler.descendInput(node.obj).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
               const local = compiler.localVariables.next();              
               return new (imports.TypedInput)(`(yield* (
                 ${local} = ${obj},
-                runtime.ext_moreTypesPlus.getMethod(${local}, ${name}).callWithThis(${local})
+                runtime.ext_moreTypesPlus.getObjMethod(${local}, ${name}).callWithThis(${local}, false)
               ))`, imports.TYPE_UNKNOWN);
             },
             prepareAndCallMethod: (node, compiler, imports) => {
@@ -2086,14 +2143,14 @@
               compiler.source = oldSrc;
               const generatedJS =`(yield* (
                 ${objLocal} = ${obj},
-                ${methodLocal} = runtime.ext_moreTypesPlus.getMethod(${objLocal}, ${name}),
+                ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${name}),
                 (function* () {
                   console.log("method", ${methodLocal});
                   runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
                   try {  ${prepareSrc}  }
                   finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                   runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                  try {  yield* ${methodLocal}.callWithThis(${objLocal});  }
+                  try {  yield* ${methodLocal}.callWithThis(${objLocal}, false);  }
                   finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ));`;
@@ -2112,14 +2169,14 @@
               compiler.source = oldSrc;
               const generatedJS =`(yield* (
                 ${objLocal} = ${obj},
-                ${methodLocal} = runtime.ext_moreTypesPlus.getMethod(${objLocal}, ${name}),
+                ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${name}),
                 (function* () {
                   console.log("method", ${methodLocal});
                   runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
                   try {  ${prepareSrc}  }
                   finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                   runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                  try {  return yield* ${methodLocal}.callWithThis(${objLocal});  }
+                  try {  return yield* ${methodLocal}.callWithThis(${objLocal}, false);  }
                   finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ))`;
