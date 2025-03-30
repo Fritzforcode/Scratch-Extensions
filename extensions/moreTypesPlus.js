@@ -431,7 +431,7 @@
             if (num < len) return this.__values.length = num;
             // It must be larger
             for (let i = len; i < num; i++) {
-              this.__values.push(tjsValueshis.Nothing);
+              this.__values.push(jsValueshis.Nothing);
             }
             return num;
           }
@@ -544,9 +544,31 @@
           call() {
             return this.func();
           }
-          callWithThis(thisVal, returnThis) {
-            return this.func.call(thisVal, returnThis);
+          callWithThis(thisVal, methodName) {
+            const innerGen = this.func.call(thisVal);
+            const outerGen = function* () {
+              let result = { done: false };
+              
+              while (!result.done) {
+                result = innerGen.next();
+                
+                if (result.done) {
+                  if (methodName === "__init__") {
+                    if (result.value !== jsValues.Nothing) {
+                      throw "__init__ method must return Nothing.";
+                    }
+                    return thisVal;
+                  } else {
+                    return result.value;
+                  }
+                } else {
+                  yield result.value;
+                }
+              }
+            }
+            return outerGen();
           }
+            
         }
         /*jsValues.RegExp = class RegularExpression {
           constructor(obj) {
@@ -658,7 +680,7 @@
             if (obj.constructor?.WRAPPER) {
               const wrapper = obj.constructor.WRAPPER;
               if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
-                return jsValues.__methodsOfObjects.get(wrapper)[name].callWithThis(obj, false);
+                return jsValues.__methodsOfObjects.get(wrapper)[name].callWithThis(obj, name);
               }
               let success = false;
               let oldWrapper = wrapper;
@@ -668,7 +690,7 @@
                 let method = null;
                 if (!newWrapper) break;
                 if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
-                  return method.callWithThis(obj, false);
+                  return method.callWithThis(obj, name);
                 }
                 oldWrapper = newWrapper; // go to next iteration
               }
@@ -678,7 +700,7 @@
           if (!methods[name]) {
             throw `Attempted to call non-existent method ${name} on ${obj}`;
           }
-          return methods[name].callWithThis(obj, false)
+          return methods[name].callWithThis(obj, name)
         }*/
         jsValues.getObjMethod = (obj, name) => {
           if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
@@ -755,10 +777,12 @@
         jsValues.inheritsFrom = (value, otherClass) => {
           return value.class.prototype instanceof (jsValues.typeof(value) === "Class" ? value.class : value);
         }
-        jsValues.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
+        jsValues.constructFrom = function* (value, yieldMethod) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass, true/false));
           if (jsValues.canConstruct(value)) {
             const instance = new (value.class)();
-            return (yield* jsValues.getObjMethod(instance, "__init__").callWithThis(instance, true));
+            const method = jsValues.getObjMethod(instance, "__init__");
+            if (yieldMethod) yield method;
+            return (yield* method.callWithThis(instance, "__init__"));
           } else {
             throw "Attempted to construct from non-class.";
           }
@@ -1200,20 +1224,6 @@
             },
             this.makeLabel("Anonymous Function Calls"),
             {
-              opcode: "callFunction",
-              func: "noComp",
-              blockType: Scratch.BlockType.COMMAND,
-              text: "call function [FUNCTION]",
-              tooltip: "Executes a function, and discards its return value. ",
-              arguments: {
-               FUNCTION: {
-                 type: Scratch.ArgumentType.STRING,
-                 defaultValue: "Insert Function Here",
-               }
-              },
-              hideFromPalette: true,
-            },
-            {
               opcode: "callFunctionOutput",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
@@ -1226,21 +1236,6 @@
                  defaultValue: "Insert Function Here",
                }
               }
-            },
-            {
-              opcode: "prepareAndCallFunction",
-              func: "noComp",
-              blockType: Scratch.BlockType.COMMAND,
-              branchCount: 1,
-              text: ["prepare", "and call function [FUNCTION]"],
-              tooltip: "Executes a function after preperation and discards its return value. ",
-              arguments: {
-               FUNCTION: {
-                 type: Scratch.ArgumentType.STRING,
-                 defaultValue: "Insert Function Here",
-               },
-              },
-              hideFromPalette: true,
             },
             {
               opcode: "prepareAndCallFunctionOutput",
@@ -1375,24 +1370,6 @@
               }
             },
             {
-              opcode: "callMethod",
-              func: "noComp",
-              blockType: Scratch.BlockType.COMMAND,
-              tooltip: "Calls a method with a \"this\" value",
-              text: "call method with name [NAME] on [VALUE]",
-              arguments: {
-                NAME: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "foo"
-                },
-                VALUE: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "Insert Object / Array / Set / Map Here"
-                }
-              },
-              hideFromPalette: true,
-            },
-            {
               opcode: "callMethodOutput",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
@@ -1409,25 +1386,6 @@
                   defaultValue: "Insert Object / Array / Set / Map Here"
                 }
               }
-            },
-            {
-              opcode: "prepareAndCallMethod",
-              func: "noComp",
-              blockType: Scratch.BlockType.COMMAND,
-              branchCount: 1,
-              tooltip: "Calls a method with a \"this\" value after preperation.",
-              text: ["prepare", "and call method with name [NAME] on [VALUE]"],
-              arguments: {
-                NAME: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "foo"
-                },
-                VALUE: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "Insert Object / Array / Set / Map Here"
-                }
-              },
-              hideFromPalette: true,
             },
             {
               opcode: "prepareAndCallMethodOutput",
@@ -1453,7 +1411,21 @@
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              text: "Construct an instance of [CLASS]",
+              text: "construct instance of [CLASS]",
+              arguments: {
+                CLASS: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Insert Class Here"
+                }
+              }
+            },
+            {
+              opcode: "preprareAndConstruct",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              branchCount: 1,
+              text: ["prepare", "and construct instance of [CLASS]"],
               arguments: {
                 CLASS: {
                   type: Scratch.ArgumentType.STRING,
@@ -1592,18 +1564,9 @@
               kind: "stack",
               value: generator.descendInputOfBlock(block, "VALUE")
             }),
-            callFunction: (generator, block) => (generator.script.yields = true, { // Tell the compiler that the script needs to yield cuz it does
-              kind: "stack",
-              func: generator.descendInputOfBlock(block, "FUNCTION")
-            }),
             callFunctionOutput: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               func: generator.descendInputOfBlock(block, "FUNCTION")
-            }),
-            prepareAndCallFunction: (generator, block) => (generator.script.yields = true, {
-              kind: "stack",
-              func: generator.descendInputOfBlock(block, "FUNCTION"),
-              prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
             }),
             prepareAndCallFunctionOutput: (generator, block) => (generator.script.yields = true, {
               kind: "input",
@@ -1711,26 +1674,20 @@
               name: generator.descendInputOfBlock(block, "NAME"),
               obj: generator.descendInputOfBlock(block, "VALUE")
             }),
-            callMethod: (generator, block) => (generator.script.yields = true, {
-              kind: "stack",
-              name: generator.descendInputOfBlock(block, "NAME"),
-              obj: generator.descendInputOfBlock(block, "VALUE")
-            }),
             callMethodOutput: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               name: generator.descendInputOfBlock(block, "NAME"),
               obj: generator.descendInputOfBlock(block, "VALUE")
             }),
-            prepareAndCallMethod: (generator, block) => (generator.script.yields = true, {
-              kind: "stack",
-              name: generator.descendInputOfBlock(block, "NAME"),
-              obj: generator.descendInputOfBlock(block, "VALUE"),
-              prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
-            }),
             prepareAndCallMethodOutput: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               name: generator.descendInputOfBlock(block, "NAME"),
               obj: generator.descendInputOfBlock(block, "VALUE"),
+              prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
+            }),
+            preprareAndConstruct: (generator, block) => (generator.script.yields = true, {
+              kind: "input",
+              "class": generator.descendInputOfBlock(block, "CLASS"),
               prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
             }),
             construct: (generator, block) => (generator.script.yields = true, {
@@ -1793,12 +1750,9 @@
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               const generatedJS = `new (runtime.ext_moreTypesPlus.Function)(
-                (function*(returnThis){
-                  try {
-                    ${stackSrc};
-                    return runtime.ext_moreTypesPlus.Nothing;
-                  }
-                  finally {  if (returnThis) return this;  }
+                (function*(){
+                  ${stackSrc};
+                  return runtime.ext_moreTypesPlus.Nothing;
                 }), null
               )`;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
@@ -1819,18 +1773,15 @@
               const generatedJS = `(yield* (
                 runtime.ext_moreTypesPlus.enterFunctionDef(),
                 function*(returnThis) {
-                  try {
-                    try {  ${prepareSrc}  }
-                    finally {  ${fdefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
-                    return new (runtime.ext_moreTypesPlus.Function)(
-                      (function*(returnValue) {
-                        ${funcCodeSrc};
-                        return runtime.ext_moreTypesPlus.Nothing;
-                      }), 
-                      ${fdefLocal}
-                    );
-                  }
-                  finally {  if (returnThis) return this;  }
+                  try {  ${prepareSrc}  }
+                  finally {  ${fdefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                  return new (runtime.ext_moreTypesPlus.Function)(
+                    (function*() {
+                      ${funcCodeSrc};
+                      return runtime.ext_moreTypesPlus.Nothing;
+                    }), 
+                    ${fdefLocal}
+                  );
                 }()
               ))`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
@@ -1852,20 +1803,6 @@
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
             },
-            callFunction: (node, compiler, imports) => {
-              const local = compiler.localVariables.next();
-              const func = compiler.descendInput(node.func);
-              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension";
-
-              const generatedJS = `(yield* (
-                ${local} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function"
-                  ? ${local}.call()
-                  : runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
-                )
-              ));`;
-              compiler.source += generatedJS;
-            },
             callFunctionOutput: (node, compiler, imports) => {
               const local = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
@@ -1878,33 +1815,6 @@
               ))`;
               console.log(generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
-            },
-            prepareAndCallFunction: (node, compiler, imports) => {
-              const local1 = compiler.localVariables.next();
-              const local2 = compiler.localVariables.next();
-              const func = compiler.descendInput(node.func);            
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
-              const prepareSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
-              
-              if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              const generatedJS = `(yield* (
-                ${local1} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
-                  (function* (){})() : // Do nothing wait for later
-                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
-                (function* (){
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
-                  try {  ${prepareSrc}  }
-                  finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
-                  try {  yield* ${local1}.call();  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ));`;
-              console.log("=>", generatedJS);
-              compiler.source += generatedJS;
             },
             prepareAndCallFunctionOutput: (node, compiler, imports) => {
               const local1 = compiler.localVariables.next();
@@ -1930,7 +1840,6 @@
                   finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ))`;
-              console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             setNextCallArgument: (node, compiler, imports) => {
@@ -2110,73 +2019,40 @@
               // runtime.ext_moreTypesPlus.appendMethod(obj, name, method)
               compiler.source += `runtime.ext_moreTypesPlus.appendMethod(${obj}, ${name}, ${method});\n`;
             },
-            callMethod: (node, compiler, imports) => {
-              // getObjMethod(obj, name).callWithThis(obj)
-              const obj = compiler.descendInput(node.obj).asUnknown();
-              const name = compiler.descendInput(node.name).asUnknown();
-              const local = compiler.localVariables.next();
-              compiler.source += `(yield* (
-                ${local} = ${obj},
-                runtime.ext_moreTypesPlus.getObjMethod(${local}, ${name}).callWithThis(${local}, false)
-              ));`;
-            },
             callMethodOutput: (node, compiler, imports) => {
-              // getObjMethod(obj, name).callWithThis(obj)
-              const obj = compiler.descendInput(node.obj).asUnknown();
-              const name = compiler.descendInput(node.name).asUnknown();
-              const local = compiler.localVariables.next();              
+              // getObjMethod(obj, name).callWithThis(obj, name)
+              const obj  = compiler.descendInput(node.obj).asUnknown();
+              const name = compiler.descendInput(node.name).asString();
+              const objLocal    = compiler.localVariables.next();
+              const nameLocal   = compiler.localVariables.next();
               return new (imports.TypedInput)(`(yield* (
-                ${local} = ${obj},
-                runtime.ext_moreTypesPlus.getObjMethod(${local}, ${name}).callWithThis(${local}, false)
+                ${objLocal} = ${obj},
+                ${nameLocal} = ${name},
+                runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}).callWithThis(${objLocal}, ${nameLocal})
               ))`, imports.TYPE_UNKNOWN);
             },
-            prepareAndCallMethod: (node, compiler, imports) => {
-              const obj = compiler.descendInput(node.obj).asUnknown();
-              const name = compiler.descendInput(node.name).asUnknown();
-              const callLocal = compiler.localVariables.next();
-              const objLocal = compiler.localVariables.next();
-              const methodLocal = compiler.localVariables.next();
-
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.prepare, new (imports.Frame)(false));
-              const prepareSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
-              const generatedJS =`(yield* (
-                ${objLocal} = ${obj},
-                ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${name}),
-                (function* () {
-                  console.log("method", ${methodLocal});
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
-                  try {  ${prepareSrc}  }
-                  finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                  try {  yield* ${methodLocal}.callWithThis(${objLocal}, false);  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ));`;
-              compiler.source += generatedJS;
-            },
             prepareAndCallMethodOutput: (node, compiler, imports) => {
-              const obj = compiler.descendInput(node.obj).asUnknown();
-              const name = compiler.descendInput(node.name).asUnknown();
-              const callLocal = compiler.localVariables.next();
-              const objLocal = compiler.localVariables.next();
+              const obj  = compiler.descendInput(node.obj).asUnknown();
+              const name = compiler.descendInput(node.name).asString();
+              const callLocal   = compiler.localVariables.next();
+              const objLocal    = compiler.localVariables.next();
+              const nameLocal   = compiler.localVariables.next();
               const methodLocal = compiler.localVariables.next();
 
               const oldSrc = compiler.source;
-              compiler.descendStack(node.prepare, new (imports.Frame)(false));
+              compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
               const prepareSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               const generatedJS =`(yield* (
                 ${objLocal} = ${obj},
-                ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${name}),
+                ${nameLocal} = ${name},
+                ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}),
                 (function* () {
-                  console.log("method", ${methodLocal});
                   runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
                   try {  ${prepareSrc}  }
                   finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                   runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                  try {  return yield* ${methodLocal}.callWithThis(${objLocal}, false);  }
+                  try {  yield* ${methodLocal}.callWithThis(${objLocal}, ${nameLocal});  }
                   finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ))`;
@@ -2184,12 +2060,39 @@
             },
             construct: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
-              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.constructFrom(${constructor})))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.constructFrom(${constructor}, false)))`, imports.TYPE_UNKNOWN);
+            },
+            preprareAndConstruct: (node, compiler, imports) => {
+              console.log("node", node);
+              const constructor = compiler.descendInput(node.class).asUnknown();
+              const genLocal    = compiler.localVariables.next();
+              const callLocal   = compiler.localVariables.next();
+              
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              const generatedJS2 = `(yield* (
+                runtime.ext_moreTypesPlus.constructFrom(${constructor}, true)
+              ))`
+              const generatedJS = `(yield* (
+                (function* () {
+                  ${genLocal} = runtime.ext_moreTypesPlus.constructFrom(${constructor}, true)();
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${genLocal}.next().value.fdef);
+                  try {  ${prepareSrc}  }
+                  finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
+                  try {  return yield* ${genLocal};  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
+                })()
+              ))`
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             instanceof: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
               const obj = compiler.descendInput(node.obj).asUnknown();
-              return new (imports.TypedInput)(`(${obj} instanceof runtime.ext_moreTypesPlus.getClassToExtend(${constructor}, true))`, imports.TYPE_BOOLEAN)
+              return new (imports.TypedInput)(`(${obj} instanceof runtime.ext_moreTypesPlus.getClassToExtend(${constructor}, true))`, imports.TYPE_BOOLEAN);
             }
           }
         }
