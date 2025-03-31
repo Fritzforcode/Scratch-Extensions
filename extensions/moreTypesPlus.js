@@ -669,6 +669,7 @@
           }
 
           jsValues.__methodsOfObjects.get(obj)[name] = method;
+          console.log("appendMethod", obj)
           return obj;
         }
         /*jsValues.executeMethod = (obj, name) => {
@@ -1290,8 +1291,8 @@
               blockShape: Scratch.BlockShape.SQUARE,
               branchCount: 1,
               disableMonitor: true,
-              text: "anonymous class" // extends object
-            }, // done!
+              text: "anonymous class",
+            },
             {
               opcode: "anonymousClassExtends",
               func: "noComp",
@@ -1316,25 +1317,6 @@
               disableMonitor: true,
               text: "create anonymous class with __init__ [INIT]",
               arguments: {
-                INIT: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "Insert __init__ Function Here"
-                },
-              }
-            },
-            {
-              opcode: "anonymousClassExtendsInit",
-              func: "noComp",
-              blockType: Scratch.BlockType.REPORTER,
-              blockShape: Scratch.BlockShape.SQUARE,
-              disableMonitor: true,
-              text: "create anonymous class extends [CLASS] with __init__ [INIT]",
-              arguments: {
-                CLASS: {
-                  type: Scratch.ArgumentType.STRING,
-                  menu: "defaultClasses",
-                  defaultValue: "Put in a class, or use the menu"
-                },
                 INIT: {
                   type: Scratch.ArgumentType.STRING,
                   defaultValue: "Insert __init__ Function Here"
@@ -1658,11 +1640,6 @@
             }),
             anonymousClassInit: (generator, block) => ({
               kind: "input",
-              init    : generator.descendInputOfBlock(block, "INIT" ),
-            }),
-            anonymousClassExtendsInit: (generator, block) => ({
-              kind: "input",
-             "extends": generator.descendInputOfBlock(block, "CLASS"),
               init    : generator.descendInputOfBlock(block, "INIT" ),
             }),
             this: (generator, block) => ({
@@ -1992,18 +1969,6 @@
               
               const generatedJS = `
                 runtime.ext_moreTypesPlus.appendMethod(new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
-                  constructor() {super()}
-                }), "__init__", ${initFunc.asUnknown()})
-              `;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
-            },
-            anonymousClassExtendsInit: (node, compiler, imports) => {
-              console.log("node", node);
-              const classToExtend = compiler.descendInput(node.extends);
-              const initFunc      = compiler.descendInput(node.init   );
-              
-              const generatedJS = `
-                runtime.ext_moreTypesPlus.appendMethod(new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend(${classToExtend.asUnknown()})) {
                   constructor() {super()}
                 }), "__init__", ${initFunc.asUnknown()})
               `;
