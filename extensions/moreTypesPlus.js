@@ -778,11 +778,10 @@
         jsValues.inheritsFrom = (value, otherClass) => {
           return value.class.prototype instanceof (jsValues.typeof(value) === "Class" ? value.class : value);
         }
-        jsValues.constructFrom = function* (value, yieldMethod) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass, true/false));
+        jsValues.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
           if (jsValues.canConstruct(value)) {
             const instance = new (value.class)();
             const method = jsValues.getObjMethod(instance, "__init__");
-            if (yieldMethod) yield method;
             return (yield* method.callWithThis(instance, "__init__"));
           } else {
             throw "Attempted to construct from non-class.";
@@ -1965,13 +1964,19 @@
             },
             anonymousClassInit: (node, compiler, imports) => {
               console.log("node", node);
-              const initFunc      = compiler.descendInput(node.init   );
-              
-              const generatedJS = `
-                runtime.ext_moreTypesPlus.appendMethod(new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
-                  constructor() {super()}
-                }), "__init__", ${initFunc.asUnknown()})
-              `;
+              const initFunc = compiler.descendInput(node.init);
+              const objLocal = compiler.localVariables.next();
+
+              const generatedJS = `(yield* (function* () {
+                ${objLocal} = new (runtime.ext_moreTypesPlus.Class)(
+                  class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
+                    constructor() {super()}
+                    toString() {return "<MyClass Instance>"}
+                  }
+                );
+                runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
+                return ${objLocal};
+              })())`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             this: (node, compiler, imports) => {
@@ -2025,33 +2030,30 @@
             },
             construct: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
-              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.constructFrom(${constructor}, false)))`, imports.TYPE_UNKNOWN);
+              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.constructFrom(${constructor})))`, imports.TYPE_UNKNOWN);
             },
             preprareAndConstruct: (node, compiler, imports) => {
               console.log("node", node);
-              const constructor = compiler.descendInput(node.class).asUnknown();
-              const genLocal    = compiler.localVariables.next();
-              const callLocal   = compiler.localVariables.next();
+              const classInput    = compiler.descendInput(node.class);
+              const classLocal    = compiler.localVariables.next();
+              const instanceLocal = compiler.localVariables.next();
+              const callLocal     = compiler.localVariables.next();
               
               const oldSrc = compiler.source;
               compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
               const prepareSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
-              const generatedJS2 = `(yield* (
-                runtime.ext_moreTypesPlus.constructFrom(${constructor}, true)
-              ))`
-              const generatedJS = `(yield* (
-                (function* () {
-                  ${genLocal} = runtime.ext_moreTypesPlus.constructFrom(${constructor}, true)();
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${genLocal}.next().value.fdef);
-                  try {  ${prepareSrc}  }
-                  finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                  try {  return yield* ${genLocal};  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ))`
+              const generatedJS = `(yield* (function* () {
+                ${classLocal} = ${classInput.asUnknown()}
+                runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").fdef);  
+                try {  ${prepareSrc}  }
+                finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
+                try {  return (yield* (runtime.ext_moreTypesPlus.constructFrom(${classLocal})));  }
+                finally {  runtime.ext_moreTypesPlus.exitScope();  }
+              })())`
+              console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             instanceof: (node, compiler, imports) => {
