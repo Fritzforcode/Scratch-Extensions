@@ -66,7 +66,7 @@
           delete store[str]; 
           return val;
         }
-        jsValues._GETVAR = function (varName) {
+        jsValues._GETVAR = function _GETVAR(varName) {
           const targets = runtime.targets;
           for (const targetIdx in targets) {
             const target = targets[targetIdx];
@@ -82,7 +82,7 @@
           }
           return [false, "undefined"];
         }
-        jsValues._SETVAR = function (varName, value) {
+        jsValues._SETVAR = function _SETVAR(varName, value) {
           const targets = runtime.targets;
           let varFound = false;
           for (const targetIdx in targets) {
@@ -102,7 +102,7 @@
             throw "Variable \"" + varName + "\" not found"
           }
         }
-        jsValues._GENERATEVARID = function () {
+        jsValues._GENERATEVARID = function _GENERATEVARID() {
           const varIdCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#%()*+,-./:;=?@[]^_`{|}~";
           let token = '';
           for (let i = 0; i < 20; i++) {
@@ -112,23 +112,21 @@
           return token;
         }
           
-        jsValues._CREATEVAR = function (targetIdx, varName) {
-          if (varName === "") throw "Attempted creating a variable with an empty name."
+        jsValues._CREATEVAR = function _CREATEVAR(targetIdx, varName) {
           if (jsValues._GETVAR(varName)[0]) {
-            throw `Variable "${varName}" alredy exists.`
+            return; // if var alredy exists, do nothing
           }
           const targets = runtime.targets;
           const target = targets[targetIdx];
-          let id = jsValues._GENERATEVARID();
+          const id = jsValues._GENERATEVARID();
           while (target.variables.hasOwnProperty(id)) {
-            id = jsValues._GENERATEVARID();
+            const id = jsValues._GENERATEVARID();
           }
           target.lookupOrCreateVariable(id, varName);
         }
         
-        jsValues._DELETEVAR = function (varName) {
+        jsValues._DELETEVAR = function _DELETEVAR(varName) {
           const targets = runtime.targets;
-          let varFound = false;
           for (const targetIdx in targets) {
             const target = targets[targetIdx];
             if (!target.isOriginal) continue;
@@ -137,16 +135,11 @@
                 const variable = target.variables[varId];
                 if (variable.name === varName) {
                   delete target.variables[varId];
-                  varFound = true;
                 }
               }
             }
           }
-          if (!varFound) {
-            throw "Variable \"" + varName + "\" not found."
-          }
         }
-
         jsValues.typeof = function TYPEOF(value) {
           let isPrimitive = Object(value) !== value;
           if (isPrimitive) {
@@ -438,7 +431,7 @@
             if (num < len) return this.__values.length = num;
             // It must be larger
             for (let i = len; i < num; i++) {
-              this.__values.push(jsValues.Nothing);
+              this.__values.push(jsValueshis.Nothing);
             }
             return num;
           }
@@ -846,7 +839,6 @@
           id: 'moreTypesPlus',
           name: 'More Types Plus',
           color1: "#8084ff",
-          docsURI: "https://extensions.penguinmod.com/docs/more-types",
           blocks: [
             this.makeLabel("If you hover over blocks,"),
             this.makeLabel("there will be a tooltip."),
@@ -854,7 +846,6 @@
             this.makeLabel("Variable Access and Utility"),
             {
               opcode: "getVar",
-              func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               text: "variable [VARIABLE]",
               arguments: {
@@ -865,7 +856,6 @@
             },
             {
               opcode: "varExists",
-              func: "noComp",
               blockType: Scratch.BlockType.BOOLEAN,
               text: "variable [VARIABLE] exists?",
               arguments: {
@@ -891,7 +881,6 @@
             },
             {
               opcode: "createGlobalVar",
-              func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
               text: "create global variable [VARIABLE]",
               arguments: {
@@ -913,7 +902,6 @@
             },
             {
               opcode: "deleteVar",
-              func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
               text: "delete variable [VARIABLE]",
               arguments: {
@@ -949,6 +937,12 @@
               }
             },
             {
+              opcode: "throw",
+              blockType: Scratch.BlockType.COMMAND,
+              text: "throw an error.",
+              hideFromPalette: true // yeah this isnt supposed to be used.
+            },
+            {
               opcode: "outputCode",
               func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
@@ -969,8 +963,7 @@
                   tooltip: "The type of the JavaScript object to create. ",
                   menu: "objectClasses"
                 }
-              },
-              disableMonitor: true,
+              }
             },
             {
               opcode: "typeof",
@@ -1139,7 +1132,6 @@
               blockShape: Scratch.BlockShape.SQUARE,
               tooltip: "Creates a symbol, which is a globally unique value. This means that every new symbol, is different from every other symbol.",
               text: "create a symbol",
-              disableMonitor: true,
             },
             {
               opcode: "nothingValue",
@@ -1147,8 +1139,7 @@
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               tooltip: "The \"Nothing\" value",
-              text: "nothing",
-              disableMonitor: true,
+              text: "nothing"
             },
             // Planning on adding ==, === and ==== (basically just Object.is) for objects
             // I FOUND A WAY TO MAKE FUNCTIONS
@@ -1508,38 +1499,22 @@
       getCompileInfo() {
         return {
           ir: {
-            getVar: (generator, block) => ({
-              kind: "input",
-              variable: generator.descendInputOfBlock(block, "VARIABLE"),
-            }),
-            varExists: (generator, block) => ({
-              kind: "input",
-              variable: generator.descendInputOfBlock(block, "VARIABLE"),
-            }),
             setVar: (generator, block) => ({
               kind: "stack",
               variable: generator.descendInputOfBlock(block, "VARIABLE"),
               value   : generator.descendInputOfBlock(block, "VALUE"   ),
             }),
-            createGlobalVar: (generator, block) => ({
-              kind: "stack",
-              variable: generator.descendInputOfBlock(block, "VARIABLE"),
-            }),
             createSpriteVar: (generator, block) => ({
               kind: "stack",
               variable: generator.descendInputOfBlock(block, "VARIABLE"),
             }),
-            deleteVar: (generator, block) => ({
+            log: (generator, block) => ({
               kind: "stack",
-              variable: generator.descendInputOfBlock(block, "VARIABLE"),
+              contents: generator.descendInputOfBlock(block, "TXT"),
             }),
             ignoreReturnValue: (generator, block) => ({
               kind: "stack",
               value: generator.descendInputOfBlock(block, "VALUE"),
-            }),
-            log: (generator, block) => ({
-              kind: "stack",
-              contents: generator.descendInputOfBlock(block, "TXT"),
             }),
             newObject: (generator, block) => ({
               kind: "input",
@@ -1703,40 +1678,16 @@
             })
           },
           js: {
-            getVar: (node, compiler, imports) => {
-              const variable = compiler.descendInput(node.variable);
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._GETVAR(${variable.asString()})[1]`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
-            },
-            varExists: (node, compiler, imports) => {
-              const variable = compiler.descendInput(node.variable);
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._GETVAR(${variable.asString()})[0]`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
-            },
             setVar: (node, compiler, imports) => {
               const variable = compiler.descendInput(node.variable);
               const value    = compiler.descendInput(node.value   );
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._SETVAR(${variable.asString()}, ${value.asUnknown()});\n`;
-              compiler.source += generatedJS;
-            },
-            createGlobalVar: (node, compiler, imports) => {
-              const variable = compiler.descendInput(node.variable);
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._CREATEVAR(0, ${variable.asString()});\n`; // Stage has Index 0
+              const generatedJS = `vm.runtime.ext_moreTypesPlus._SETVAR(${variable.asUnknown()}, ${value.asUnknown()});\n`;
               compiler.source += generatedJS;
             },
             createSpriteVar: (node, compiler, imports) => {
               const variable = compiler.descendInput(node.variable);
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._CREATEVAR(vm.runtime.targets.indexOf(target), ${variable.asString()});\n`;
+              const generatedJS = `vm.runtime.ext_moreTypesPlus._CREATEVAR(vm.runtime.targets.indexOf(target), ${variable.asUnknown()}.toString());\n`;
               compiler.source += generatedJS;
-            },
-            deleteVar: (node, compiler, imports) => {
-              const variable = compiler.descendInput(node.variable);
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._DELETEVAR(${variable.asString()});\n`;
-              compiler.source += generatedJS;
-            },
-            ignoreReturnValue: (node, compiler, imports) => {
-              const value = compiler.descendInput(node.value);
-              compiler.source += `${value.asUnknown()};\n`;
             },
             log: (node, compiler, imports) => {
               let x = compiler.descendInput(node.contents)
@@ -1744,26 +1695,30 @@
               //console.log(x)
               //console.log(compiler)
             },
+            ignoreReturnValue: (node, compiler, imports) => {
+              const value = compiler.descendInput(node.value);
+              compiler.source += `${value.asUnknown()};\n`;
+            },
             newObject: (node, compiler, imports) => {
               let object;
               switch (node.type) {
                 case "Object":
-                  object = `new ((runtime.ext_moreTypesPlus).Object)()`;
+                  object = `new ((runtime.ext_moreTypesPlus).Object)()`
                   break;
                 case "Array":
-                  object = `new ((runtime.ext_moreTypesPlus).Array)()`;
+                  object = `new ((runtime.ext_moreTypesPlus).Array)()`
                   break;
                 case "Set":
-                  object = `new ((runtime.ext_moreTypesPlus).Set)()`;
+                  object = `new ((runtime.ext_moreTypesPlus).Set)()`
                   break;
                 case "Map":
-                  object = `new ((runtime.ext_moreTypesPlus).Map)()`;
+                  object = `new ((runtime.ext_moreTypesPlus).Map)()`
                   break;
                 default:
-                  object = `new ((runtime.ext_moreTypesPlus).Object)()`;
+                  object = `new ((runtime.ext_moreTypesPlus).Object)()`
                   break;
               }
-              return new (imports.TypedInput)(object, imports.TYPE_UNKNOWN);
+              return new (imports.TypedInput)(object, imports.TYPE_UNKNOWN)
             },
             anonymousFunction: (node, compiler, imports) => {
               // big hack ALSO STOLEN
@@ -2088,7 +2043,7 @@
               ))`
               const generatedJS = `(yield* (
                 (function* () {
-                  ${genLocal} = runtime.ext_moreTypesPlus.constructFrom(${constructor}, true);
+                  ${genLocal} = runtime.ext_moreTypesPlus.constructFrom(${constructor}, true)();
                   runtime.ext_moreTypesPlus.enterFunctionCall(${genLocal}.next().value.fdef);
                   try {  ${prepareSrc}  }
                   finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
@@ -2113,8 +2068,26 @@
           text: text
         }
       }
+      throw() {
+        throw "User generated Error. "
+      }
       hello() {
-        return 'there!';
+        return 'World!';
+      }
+      getVar (args) {
+        return vm.runtime.ext_moreTypesPlus._GETVAR(args.VARIABLE.toString())[1];
+      }
+      varExists (args) {
+        return vm.runtime.ext_moreTypesPlus._GETVAR(args.VARIABLE.toString())[0];
+      }
+      createGlobalVar (args) {
+        vm.runtime.ext_moreTypesPlus._CREATEVAR(0, args.VARIABLE.toString()); // Stage has Index 0
+      }
+      createSpriteVar (args) {
+        vm.runtime.ext_moreTypesPlus._CREATEVAR(vm.runtime.targets.indexOf(target), args.VARIABLE.toString());
+      }
+      deleteVar (args) {
+        vm.runtime.ext_moreTypesPlus._DELETEVAR(args.VARIABLE.toString());
       }
     }
     
