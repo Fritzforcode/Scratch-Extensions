@@ -672,55 +672,30 @@
           console.log("appendMethod", obj)
           return obj;
         }
-        /*jsValues.executeMethod = (obj, name) => {
-          if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
-          const methods = jsValues.__methodsOfObjects.get(obj);
-          
-          if (!methods) {
-            // Try to find this method on its class
-            if (obj.constructor?.WRAPPER) {
-              const wrapper = obj.constructor.WRAPPER;
-              if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
-                return jsValues.__methodsOfObjects.get(wrapper)[name].callWithThis(obj, name);
-              }
-              let success = false;
-              let oldWrapper = wrapper;
-              while (true) {
-                // Keep looking
-                const newWrapper = Object.getPrototypeOf(oldWrapper.class).WRAPPER;
-                let method = null;
-                if (!newWrapper) break;
-                if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
-                  return method.callWithThis(obj, name);
-                }
-                oldWrapper = newWrapper; // go to next iteration
-              }
-            }
-            throw `Attempted to call non-existent method ${name} on ${obj}`;
-          }
-          if (!methods[name]) {
-            throw `Attempted to call non-existent method ${name} on ${obj}`;
-          }
-          return methods[name].callWithThis(obj, name)
-        }*/
         jsValues.getObjMethod = (obj, name) => {
-          if (!jsValues.isObject(obj)) throw "Attempted to call method on invalid receiver " + obj;
+          console.log("getObjMethod", obj, name);
+          console.log("mOO", jsValues.__methodsOfObjects)
+          if (!jsValues.isObject(obj)) throw "Attempted to get method of non-class/non-function " + obj;
           const methods = jsValues.__methodsOfObjects.get(obj);
+          console.log("first methods", methods);
           
           if (!methods) {
             // Try to find this method on its class
             if (obj.constructor?.WRAPPER) {
               const wrapper = obj.constructor.WRAPPER;
               if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
+                console.log("got 1", jsValues.__methodsOfObjects.get(wrapper)[name]);
                 return jsValues.__methodsOfObjects.get(wrapper)[name];
               }
               let oldWrapper = wrapper;
               while (true) {
                 // Keep looking
                 const newWrapper = Object.getPrototypeOf(oldWrapper.class).WRAPPER;
+                console.log("new wrapper", obj);
                 let method = null;
                 if (!newWrapper) break;
                 if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
+                  console.log("got 2", method);
                   return method;
                 }
                 oldWrapper = newWrapper; // go to next iteration
@@ -731,21 +706,12 @@
           if (!methods[name]) {
             throw `Attempted to call non-existent method ${name} on ${obj}`;
           }
+          console.log("got 3", methods[name]);
           return methods[name];
         }
         jsValues.getClassMethod = (cls, name) => {
-          if (jsValues.typeof(cls) !== "Class") {
-            throw `Attempted to get method on invalid receiver ${cls}`;
-          }
-          let currentClass = cls;
-          while (currentClass) {
-            const methods = jsValues.__methodsOfObjects.get(currentClass);
-            if (methods?.[name]) {
-              return methods[name];
-            }
-            currentClass = Object.getPrototypeOf(currentClass);
-          }
-          throw `Attempted to call non-existent method ${name} on ${cls.name}`;
+          if (jsValues.typeof(cls) !== "Class") throw "Attempted to get method of non-class/non-function " + cls;
+          return jsValues.getObjMethod((new (cls.class)()), name);
         }
         jsValues.getSuperMethod = (obj, name) => {
           if (!jsValues.isObject(obj)) {
@@ -1284,41 +1250,30 @@
             },
             this.makeLabel("OOP"),
             {
-              opcode: "anonymousClass",
+              opcode: "anonymousClassInit",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              branchCount: 1,
               disableMonitor: true,
-              text: "anonymous class",
+              text: "create anonymous class [NAME] with __init__ [INIT]",
+              arguments: {
+                NAME: {type: Scratch.ArgumentType.STRING, defaultValue: "Class Name"},
+                INIT: {type: Scratch.ArgumentType.STRING, defaultValue: "Insert __init__ Function Here"},
+              }
             },
             {
               opcode: "anonymousClassExtends",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              branchCount: 1,
               disableMonitor: true,
-              text: "anonymous class extends [CLASS]",
+              text: "create anonymous class [NAME] extends [SUPER]",
               arguments: {
-                CLASS: {
+                NAME : {type: Scratch.ArgumentType.STRING, defaultValue: "Class Name"},
+                SUPER: {
                   type: Scratch.ArgumentType.STRING,
                   menu: "defaultClasses",
                   defaultValue: "Put in a class, or use the menu"
-                }
-              }
-            },
-            {
-              opcode: "anonymousClassInit",
-              func: "noComp",
-              blockType: Scratch.BlockType.REPORTER,
-              blockShape: Scratch.BlockShape.SQUARE,
-              disableMonitor: true,
-              text: "create anonymous class with __init__ [INIT]",
-              arguments: {
-                INIT: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "Insert __init__ Function Here"
                 },
               }
             },
@@ -1628,18 +1583,15 @@
             nothingValue: (generator, block) => ({
               kind: "input"
             }),
-            anonymousClass: (generator, block) => ({
+            anonymousClassInit: (generator, block) => ({
               kind: "input",
-              stack: generator.descendSubstack(block, "SUBSTACK")
+              name: generator.descendInputOfBlock(block, "NAME"), 
+              init: generator.descendInputOfBlock(block, "INIT"),
             }),
             anonymousClassExtends: (generator, block) => ({
               kind: "input",
-              stack: generator.descendSubstack(block, "SUBSTACK"),
-              "extends": generator.descendInputOfBlock(block, "CLASS")
-            }),
-            anonymousClassInit: (generator, block) => ({
-              kind: "input",
-              init    : generator.descendInputOfBlock(block, "INIT" ),
+              name      : generator.descendInputOfBlock(block, "NAME" ), 
+              superClass: generator.descendInputOfBlock(block, "SUPER"),
             }),
             this: (generator, block) => ({
               kind: "input"
@@ -1928,42 +1880,8 @@
             nothingValue: (node, compiler, imports) => {
               return new (imports.TypedInput)(`runtime.ext_moreTypesPlus.Nothing`, imports.TYPE_UNKNOWN);
             },
-            anonymousClass: (node, compiler, imports) => {
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.stack, new(imports.Frame)(false));
-              const stackSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
-              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
-                constructor() {super()}
-                *init(isSuper) {
-                  try {
-                    ${stackSrc};
-                  } finally {\n
-                    return this; 
-                  }
-                }
-              })`, imports.TYPE_UNKNOWN)
-            },
-            anonymousClassExtends: (node, compiler, imports) => {
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.stack, new(imports.Frame)(false));
-              const stackSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
-              const classToExtend = compiler.descendInput(node.extends).asUnknown();
-              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend(${classToExtend})) {
-                constructor() {super()}
-                *init(isSuper) {
-                  if (!isSuper) (yield* runtime.ext_moreTypesPlus.trySuper(this));
-                  try {
-                    ${stackSrc};
-                  } finally {
-                    return this;
-                  }
-                }
-              })`, imports.TYPE_UNKNOWN);
-            },
             anonymousClassInit: (node, compiler, imports) => {
-              console.log("node", node);
+              const name     = compiler.descendInput(node.name);
               const initFunc = compiler.descendInput(node.init);
               const objLocal = compiler.localVariables.next();
 
@@ -1971,12 +1889,23 @@
                 ${objLocal} = new (runtime.ext_moreTypesPlus.Class)(
                   class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
                     constructor() {super()}
-                    toString() {return "<MyClass Instance>"}
+                    toString() {return "<" + ${name.asString()} + " Instance>"}
                   }
                 );
                 runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
                 return ${objLocal};
               })())`
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            },
+            anonymousClassExtends: (node, compiler, imports) => {
+              const name       = compiler.descendInput(node.name);
+              const superClass = compiler.descendInput(node.superClass);
+              
+              const generatedJS = `(new (runtime.ext_moreTypesPlus.Class)(
+                class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
+                  constructor() {super()}
+                  toString() {return "<" + ${name.asString()} + " Instance>"}
+                }))`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             this: (node, compiler, imports) => {
