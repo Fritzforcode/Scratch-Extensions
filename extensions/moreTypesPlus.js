@@ -140,6 +140,11 @@
             }
           }
         }
+
+        jsValues.repr = obj => {
+          return (typeof obj === "string") ? JSON.stringify(obj) : obj.toString();
+        }
+
         jsValues.typeof = function TYPEOF(value) {
           let isPrimitive = Object(value) !== value;
           if (isPrimitive) {
@@ -171,6 +176,12 @@
             return "Class"
           }
           return "unknown"
+        }
+        jsValues.exactTypeof = function EXACTTYPEOF(value) {
+          if (value?.hasOwnProperty && value.hasOwnProperty("__className")) {
+            return value.__className;
+          }
+          return jsValues.typeof(value);
         }
         jsValues.clone = function CLONE(value) {
           if (jsValues.typeof(value) === "Object") {
@@ -382,12 +393,15 @@
           }
         }
         jsValues.Object.prototype.type = "PlainObject";
-        jsValues.Array = class Array{
+        jsValues.OldArray = class OldArray{
           constructor(arr) {
             this.__values = arr || [];
           }
           get(num) {
-            let key = Math.abs(Math.floor(Number(num))) - 1;
+            let key = Number(num);
+            if (key < 0) {
+              key = this.__values.length + key;
+            }
             if (num === "length") {
               return this.__values.length;
             }
@@ -401,7 +415,10 @@
             return value;
           }
           set(num, value) {
-            let key = Math.abs(Math.floor(Number(num)));
+            let key = Number(num);
+            if (key < 0) {
+              key = this.__values.length + key;
+            }
             if (num === "length") {
               return this.setLength(Number(value) || this.__values.length);
             }
@@ -413,6 +430,9 @@
             }
             if (jsValues.typeof(value) === "unknown") {
               throw `Attempted to set property of <Array> with unknown value: ${value}`;
+            }
+            if (key > this.__values.length) {
+              throw "Attempted setting an item index bigger then length."
             }
             return this.__values[key] = value;
           }
@@ -431,7 +451,7 @@
             if (num < len) return this.__values.length = num;
             // It must be larger
             for (let i = len; i < num; i++) {
-              this.__values.push(jsValueshis.Nothing);
+              this.__values.push(jsValues.Nothing);
             }
             return num;
           }
@@ -448,7 +468,75 @@
             return "Arrays do not save.";
           }
         };
+        jsValues.Array = class Array {
+          constructor(arr) {
+            this.__values = arr || [];
+          }
+      
+          /*pop(index = this.__values.length - 1) {
+            if (index < 0) index = this.__values.length + index;
+            if (index >= 0 && index < this.__values.length) {
+              return this.__values.splice(index, 1)[0];
+            }
+            throw "Index out of range";
+          }
+          slice(start = 0, end = this.__values.length) {
+            if (start < 0) start = this.__values.length + start;
+            if (end < 0) end = this.__values.length + end;
+            return new PyArray(...this.__values.slice(start, end));
+          }*/
+          get(index) {
+            if (index === "length") return this.__values.length;
+            index = Math.floor(Scratch.Cast.toNumber(index));
+            if (index < 0) index = this.__values.length + index;
+            if (index >= 0 && index < this.__values.length) {
+              return this.__values[index];
+            }
+            throw "Index out of range.";
+          }
+          set(index, value) {
+            if (index < 0) index = this.__values.length + index;
+            index = Math.floor(Scratch.Cast.toNumber(index));
+            if (index >= 0 && index < this.__values.length) {
+              return this.__values[index] = value;
+            } else {
+              throw "Index out of range.";
+            }
+          }
+          delete(num) {
+            return (delete this.__values[num]);
+          }
+          add(value) {
+            return this.__values.push(value);
+          }
+          has(num) {
+            return this.get(num) !== jsValues.Nothing;
+          }
+          get size() {
+            return this.__values.length;
+          }
+          get toString() {
+            return () => {
+              const items = this.__values.map(jsValues.repr);
+              let inner = null;
+              if (items.length <= 10) {
+                  inner = items.join(", ");
+              } else {
+                  inner = items.slice(0, 10).join(", ") + "...";
+              }
+              return `<Array(${items.length})[${inner}]>`;
+            };
+          }
+          set toString(e) {
+            throw "Cannot overwrite the toString method of an object.";
+          }
+          toJSON() {
+            return "Arrays do not save.";
+          }
+        }
         jsValues.Array.prototype.type = "Array";
+
+
         jsValues.Set = class Set {
           constructor(obj) {
             this.__values = obj || new (globalThis.Set)();
@@ -625,6 +713,11 @@
         jsValues.NothingClass.prototype.type = "Nothing";
         jsValues.Nothing = new (jsValues.NothingClass);
         
+        jsValues.enforceNothing = (value) => {
+          if ((value === null) | (value === undefined)) return jsValues.Nothing;
+          return value;
+        }
+
         jsValues.pcall = (func, target) => {
           try {
             return func(target);
@@ -668,34 +761,33 @@
             throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
 
-          jsValues.__methodsOfObjects.get(obj)[name] = method;
-          console.log("appendMethod", obj)
+          jsValues.__methodsOfObjects.get(obj)[name] = method
           return obj;
         }
         jsValues.getObjMethod = (obj, name) => {
-          console.log("getObjMethod", obj, name);
-          console.log("mOO", jsValues.__methodsOfObjects)
           if (!jsValues.isObject(obj)) throw "Attempted to get method of non-class/non-function " + obj;
           const methods = jsValues.__methodsOfObjects.get(obj);
-          console.log("first methods", methods);
           
           if (!methods) {
             // Try to find this method on its class
             if (obj.constructor?.WRAPPER) {
               const wrapper = obj.constructor.WRAPPER;
               if (jsValues.__methodsOfObjects.get(wrapper)?.[name]) {
-                console.log("got 1", jsValues.__methodsOfObjects.get(wrapper)[name]);
                 return jsValues.__methodsOfObjects.get(wrapper)[name];
               }
               let oldWrapper = wrapper;
               while (true) {
                 // Keep looking
-                const newWrapper = Object.getPrototypeOf(oldWrapper.class).WRAPPER;
-                console.log("new wrapper", obj);
+                const newPrototype = Object.getPrototypeOf(oldWrapper.class)
+                const newWrapper = newPrototype.WRAPPER;
+
+                if (([jsValues.Object, jsValues.Array, jsValues.Set, jsValues.Map].includes(newPrototype)) && (name === "__init__")) {
+                  return new jsValues.Function(function*() {return jsValues.Nothing}, null);
+                }
+
                 let method = null;
                 if (!newWrapper) break;
                 if (method = jsValues.__methodsOfObjects.get(newWrapper)?.[name]) {
-                  console.log("got 2", method);
                   return method;
                 }
                 oldWrapper = newWrapper; // go to next iteration
@@ -706,7 +798,6 @@
           if (!methods[name]) {
             throw `Attempted to call non-existent method ${name} on ${obj}`;
           }
-          console.log("got 3", methods[name]);
           return methods[name];
         }
         jsValues.getClassMethod = (cls, name) => {
@@ -931,11 +1022,24 @@
               }
             },
             {
-              opcode: "typeof",
+              opcode: "generalTypeof",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
-              text: "typeof [OBJECT]",
-              tooltip: "Gets the type of an object.",
+              text: "general typeof [OBJECT]",
+              tooltip: "Gets the general type of an object.",
+              arguments: {
+                OBJECT: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Insert Anything Here"
+                }
+              }
+            },
+            {
+              opcode: "exactTypeof",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              text: "exact typeof [OBJECT]",
+              tooltip: "Gets the exact type of an object.",
               arguments: {
                 OBJECT: {
                   type: Scratch.ArgumentType.STRING,
@@ -1573,7 +1677,11 @@
               kind: "input",
               object: generator.descendInputOfBlock(block, "OBJECT")
             }),
-            typeof: (generator, block) => ({
+            generalTypeof: (generator, block) => ({
+              kind: "input",
+              object: generator.descendInputOfBlock(block, "OBJECT")
+            }),
+            exactTypeof: (generator, block) => ({
               kind: "input",
               object: generator.descendInputOfBlock(block, "OBJECT")
             }),
@@ -1870,9 +1978,13 @@
               const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
               return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).size === "number")\n  ? ${getObj}.size\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_NUMBER)
             },
-            typeof: (node, compiler, imports) => {
+            generalTypeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
               return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.typeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER)
+            },
+            exactTypeof: (node, compiler, imports) => {
+              const obj = compiler.descendInput(node.object);
+              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.exactTypeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER)
             },
             createSymbol: (node, compiler, imports) => {
               return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus).Symbol()`, imports.TYPE_UNKNOWN);
@@ -1888,8 +2000,8 @@
               const generatedJS = `(yield* (function* () {
                 ${objLocal} = new (runtime.ext_moreTypesPlus.Class)(
                   class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
-                    constructor() {super()}
-                    toString() {return "<" + ${name.asString()} + " Instance>"}
+                    constructor() {super(); this.__className = ${name.asString()}}
+                    toString() {return "<" + this.__className + " Instance>"}
                   }
                 );
                 runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
@@ -1903,9 +2015,27 @@
               
               const generatedJS = `(new (runtime.ext_moreTypesPlus.Class)(
                 class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
-                  constructor() {super()}
-                  toString() {return "<" + ${name.asString()} + " Instance>"}
+                  constructor() {super(); this.__className = ${name.asString()}}
+                    toString() {return "<" + this.__className + " Instance>"}
                 }))`
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            },
+            anonymousClassInitExtends: (node, compiler, imports) => {
+              const name       = compiler.descendInput(node.name);
+              const superClass = compiler.descendInput(node.superClass);
+              const initFunc   = compiler.descendInput(node.init);
+              const objLocal   = compiler.localVariables.next();
+
+              const generatedJS = `(yield* (function* () {
+                ${objLocal} = new (runtime.ext_moreTypesPlus.Class)(
+                  class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
+                    constructor() {super(); this.__className = ${name.asString()}}
+                    toString() {return "<" + this.__className + " Instance>"}
+                  }
+                );
+                runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
+                return ${objLocal};
+              })())`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             this: (node, compiler, imports) => {
