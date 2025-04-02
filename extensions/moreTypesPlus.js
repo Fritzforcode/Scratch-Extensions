@@ -47,7 +47,7 @@
       constructor(runtime) {
         let jsValues = this
         jsValues.runtime = runtime;
-        jsValues.throwErr = (msg) => {
+        jsValues.throwErr = function* (msg) {
           throw msg;
         }
         const stores = new Map();
@@ -172,6 +172,12 @@
           if (value instanceof jsValues.Function) {
             return "Function"
           }
+          if (value instanceof jsValues.GeneratorFunction) {
+            return "GeneratorFunction"
+          }
+          if (value instanceof jsValues.Generator) {
+            return "Generator"
+          }
           if (value instanceof jsValues.Class) {
             return "Class"
           }
@@ -196,6 +202,10 @@
             return new (jsValues.RegExp)(structuredClone(value.__values))
           } else if (jsValues.typeof(value) === "Function") {
             throw "Cannot clone a function."
+          } else if (jsValues.typeof(value) === "GeneratorFunction") {
+            throw "Cannot clone a generator function."
+          } else if (jsValues.typeof(value) === "Generator") {
+            throw "Cannot clone a generator."
           } 
           throw `Attempted to clone value of type ${jsValues.typeof(value)}`
         }
@@ -393,7 +403,7 @@
           }
         }
         jsValues.Object.prototype.type = "PlainObject";
-        jsValues.OldArray = class OldArray{
+        /*jsValues.OldArray = class OldArray{
           constructor(arr) {
             this.__values = arr || [];
           }
@@ -467,7 +477,7 @@
           toJSON() {
             return "Arrays do not save.";
           }
-        };
+        };*/
         jsValues.Array = class Array {
           constructor(arr) {
             this.__values = arr || [];
@@ -620,12 +630,14 @@
         }
         jsValues.Symbol.prototype.type = "symbol";
 
-        jsValues.Function = class Function {
+        jsValues.BaseFunction = class BaseFunction {
           constructor(func, fdef) {
             this.func     = func;
             this.fdef     = fdef;
             console.log("init", this);
           }
+        }
+        jsValues.Function = class Function extends jsValues.BaseFunction {
           toString() {
             return `<Function fdef=${JSON.stringify(this.fdef)}>`;
           }
@@ -658,6 +670,21 @@
           }
             
         }
+        jsValues.GeneratorFunction = class GeneratorFunction extends jsValues.BaseFunction {
+          toString() {
+            return `<GeneratorFunction fdef=${JSON.stringify(this.fdef)}>`;
+          }
+          call() {
+            return new jsValues.Generator(this);
+          }
+        }
+        jsValues.Generator = class Generator {
+          constructor(generatorFunction) {
+            this.generatorFunction = generatorFunction;
+            console.log("init", this);
+          }
+        }
+        
         /*jsValues.RegExp = class RegularExpression {
           constructor(obj) {
             this.__values = obj || new RegExp();
@@ -756,7 +783,7 @@
           if (!(jsValues.__methodsOfObjects.has(obj))) {
             jsValues.__methodsOfObjects.set(obj, Object.create(null));
           }
-          if (jsValues.typeof(method) !== "Function") throw "Attempted to append method, but the method is not a function.";
+          if (!["Function", "GeneratorFunction"].includes(jsValues.typeof(method))) throw "Attempted to append method, but the method is not a function.";
           if (Object.hasOwn(jsValues.__methodsOfObjects.get(obj), name)) {
             throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
@@ -865,6 +892,9 @@
         }
         jsValues.isObject = (value) => {
           return (jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Map");
+        }
+        jsValues.isFunction = (value) => {
+          return (jsValues.typeof(value) === "Function" || jsValues.typeof(value) === "GeneratorFunction");
         }
         /*jsValues.trySuper = function* (thisVal) {
           const constructor = thisVal.constructor;
@@ -1382,6 +1412,23 @@
               }
             },
             {
+              opcode: "anonymousClassExtendsInit",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              disableMonitor: true,
+              text: "create anonymous class [NAME] extends [SUPER] with __init__ [INIT]",
+              arguments: {
+                NAME : {type: Scratch.ArgumentType.STRING, defaultValue: "Class Name"},
+                SUPER: {
+                  type: Scratch.ArgumentType.STRING,
+                  menu: "defaultClasses",
+                  defaultValue: "Put in a class, or use the menu"
+                },
+                INIT: {type: Scratch.ArgumentType.STRING, defaultValue: "Insert __init__ Function Here"},
+              }
+            },
+            {
               opcode: "this",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
@@ -1489,6 +1536,16 @@
                   defaultValue: "Put in a class, or use the menu."
                 }
               }
+            },
+            this.makeLabel("Generator Functions"),
+            {
+              opcode: "generatorFunction",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              disableMonitor: true,
+              branchCount: 1,
+              text: "generator function"
             },
             this.makeLabel("Temporary Variables Support"),
             {
@@ -1701,6 +1758,12 @@
               name      : generator.descendInputOfBlock(block, "NAME" ), 
               superClass: generator.descendInputOfBlock(block, "SUPER"),
             }),
+            anonymousClassExtendsInit: (generator, block) => ({
+              kind: "input",
+              name      : generator.descendInputOfBlock(block, "NAME" ), 
+              superClass: generator.descendInputOfBlock(block, "SUPER"),
+              init      : generator.descendInputOfBlock(block, "INIT" ),
+            }),
             this: (generator, block) => ({
               kind: "input"
             }),
@@ -1728,13 +1791,17 @@
             }),
             construct: (generator, block) => (generator.script.yields = true, {
               kind: "input",
-              "class": generator.descendInputOfBlock(block, "CLASS")
+              "class": generator.descendInputOfBlock(block, "CLASS"),
             }),
             instanceof: (generator, block) => ({
               kind: "input",
               "class": generator.descendInputOfBlock(block, "CLASS"),
-              obj: generator.descendInputOfBlock(block, "OBJECT")
-            })
+              obj: generator.descendInputOfBlock(block, "OBJECT"),
+            }),
+            generatorFunction: (generator, block) => ({
+              kind: "input",
+              stack: generator.descendSubstack(block, "SUBSTACK"),
+            }),
           },
           js: {
             setVar: (node, compiler, imports) => {
@@ -1845,7 +1912,7 @@
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
                 ${local} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local}) === "Function") ?
+                (runtime.ext_moreTypesPlus.isFunction(${local})) ?
                     ${local}.call() :
                     runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
               ))`;
@@ -1864,7 +1931,7 @@
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
                 ${local1} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.typeof(${local1}) === "Function") ?
+                (["Function", "GeneratorFunction"].includes(runtime.ext_moreTypesPlus.typeof(${local1}))) ?
                   (function* (){})() : // Do nothing wait for later
                   runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
                 (function* (){
@@ -2020,7 +2087,7 @@
                 }))`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
-            anonymousClassInitExtends: (node, compiler, imports) => {
+            anonymousClassExtendsInit: (node, compiler, imports) => {
               const name       = compiler.descendInput(node.name);
               const superClass = compiler.descendInput(node.superClass);
               const initFunc   = compiler.descendInput(node.init);
@@ -2093,10 +2160,9 @@
             },
             preprareAndConstruct: (node, compiler, imports) => {
               console.log("node", node);
-              const classInput    = compiler.descendInput(node.class);
-              const classLocal    = compiler.localVariables.next();
-              const instanceLocal = compiler.localVariables.next();
-              const callLocal     = compiler.localVariables.next();
+              const classInput = compiler.descendInput(node.class);
+              const classLocal = compiler.localVariables.next();
+              const callLocal  = compiler.localVariables.next();
               
               const oldSrc = compiler.source;
               compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
@@ -2112,14 +2178,27 @@
                 try {  return (yield* (runtime.ext_moreTypesPlus.constructFrom(${classLocal})));  }
                 finally {  runtime.ext_moreTypesPlus.exitScope();  }
               })())`
-              console.log("=>", generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             instanceof: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
               const obj = compiler.descendInput(node.obj).asUnknown();
               return new (imports.TypedInput)(`(${obj} instanceof runtime.ext_moreTypesPlus.getClassToExtend(${constructor}, true))`, imports.TYPE_BOOLEAN);
-            }
+            },
+            generatorFunction: (node, compiler, imports) => {
+              // big hack ALSO STOLEN
+              const oldSrc = compiler.source;
+              compiler.descendStack(node.stack, new (imports.Frame)(false));
+              const stackSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              const generatedJS = `new (runtime.ext_moreTypesPlus.GeneratorFunction)(
+                (function*(){
+                  ${stackSrc};
+                  return runtime.ext_moreTypesPlus.Nothing;
+                }), null
+              )`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+            },
           }
         }
       }
