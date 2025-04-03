@@ -249,41 +249,41 @@
           if (jsValues.functionDefLayers.length === 0) {
             throw '"Define Argument" cannot be used outside a function definition block.';
           }
-          const fdef = jsValues.functionDefLayers[jsValues.functionDefLayers.length-1];
-          if (fdef.hasArg(name)) {
+          const functionDef = jsValues.functionDefLayers[jsValues.functionDefLayers.length-1];
+          if (functionDef.hasArg(name)) {
             throw `Argument ${name} alredy exists`;
           }
-          if (fdef.hasOptionalArgs) {
+          if (functionDef.hasOptionalArgs) {
             throw "A positional argument cannot follow an optional argument.";
           }
-          fdef.args.push(name);
+          functionDef.args.push(name);
         }
         jsValues.addOptionalFunctionDefArg = function (name, defaultVal) {
           if (jsValues.functionDefLayers.length === 0) {
             throw '"Define Argument with Default" cannot be used outside a function definition block.';
           }
-          const fdef = jsValues.functionDefLayers[jsValues.functionDefLayers.length-1];
-          if (fdef.hasArg(name)) {
+          const functionDef = jsValues.functionDefLayers[jsValues.functionDefLayers.length-1];
+          if (functionDef.hasArg(name)) {
             throw `Argument ${name} alredy exists`;
           }
-          fdef.args.push(name);
-          fdef.argDefaults[name] = defaultVal;
-          fdef.hasOptionalArgs = true;
+          functionDef.args.push(name);
+          functionDef.argDefaults[name] = defaultVal;
+          functionDef.hasOptionalArgs = true;
         }
         
         jsValues.TempFunctionCall = class TempFunctionCall {
-          constructor(fdef) {
-            this.fdef          = fdef;
+          constructor(functionDef) {
+            this.functionDef   = functionDef;
             this.setArgValues  = {};
             this.setArgsByName = false; 
           }
           convert() {
             let argValues = {};
-            for (const name of this.fdef.args) {
+            for (const name of this.functionDef.args) {
               if (this.setArgValues.hasOwnProperty(name)) {
                 argValues[name] = this.setArgValues[name];
-              } else if (this.fdef.argIsOptional(name)) {
-                argValues[name] = this.fdef.getArgDefault(name);
+              } else if (this.functionDef.argIsOptional(name)) {
+                argValues[name] = this.functionDef.getArgDefault(name);
               } else {
                 throw "A non-optional argument was not set.";
               }
@@ -291,11 +291,11 @@
             return argValues;
           }
         }
-        jsValues.enterFunctionCall = function (fdef) {
-          if (fdef === undefined || fdef === null) {
-            fdef = new jsValues.TempFunctionDef();
+        jsValues.enterFunctionCall = function (functionDef) {
+          if (functionDef === undefined || functionDef === null) {
+            functionDef = new jsValues.TempFunctionDef();
           }
-          jsValues.functionCallLayers.push(new jsValues.TempFunctionCall(fdef));
+          jsValues.functionCallLayers.push(new jsValues.TempFunctionCall(functionDef));
         }
         jsValues.exitFunctionCall = function () {
           if (jsValues.functionCallLayers.length === 0) {
@@ -307,29 +307,29 @@
           if (jsValues.functionCallLayers.length === 0) {
             throw '"set next call argument" cannot be used outside a function call block".';
           }
-          const fcall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
-          const argIndex = Object.keys(fcall.setArgValues).length;
-          if (argIndex >= fcall.fdef.args.length) {
+          const functionCall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
+          const argIndex = Object.keys(functionCall.setArgValues).length;
+          if (argIndex >= functionCall.functionDef.args.length) {
             throw "Attempted setting more arguments then were defined.";
           }
-          if (fcall.setArgsByName) {
+          if (functionCall.setArgsByName) {
             throw "Attempted setting an argument positionally after setting an argument by name.";
           }
-          fcall.setArgValues[fcall.fdef.args[argIndex]] = value;
+          functionCall.setArgValues[functionCall.functionDef.args[argIndex]] = value;
         }
         jsValues.setFunctionCallArgByName = function (name, value) {
           if (jsValues.functionCallLayers.length === 0) {
             throw '"set call argument by name" cannot be used outside a function call block".';
           }
-          const fcall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
-          if (!fcall.fdef.hasArg(name)) {
+          const functionCall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
+          if (!functionCall.functionDef.hasArg(name)) {
             throw "Attempted setting an argument, which was never defined.";
           }
-          if (fcall.setArgValues.hasOwnProperty(name)) {
+          if (functionCall.setArgValues.hasOwnProperty(name)) {
             throw "Attempted setting an argument twice.";
           }
-          fcall.setArgValues[name] = value;
-          fcall.setArgsByName = true;
+          functionCall.setArgValues[name] = value;
+          functionCall.setArgsByName = true;
         }
 
         jsValues.TempScope = class TempScope {
@@ -631,15 +631,15 @@
         jsValues.Symbol.prototype.type = "symbol";
 
         jsValues.BaseFunction = class BaseFunction {
-          constructor(func, fdef) {
-            this.func     = func;
-            this.fdef     = fdef;
+          constructor(func, functionDef) {
+            this.func         = func;
+            this.functionDef  = functionDef;
             console.log("init", this);
           }
         }
         jsValues.Function = class Function extends jsValues.BaseFunction {
           toString() {
-            return `<Function fdef=${JSON.stringify(this.fdef)}>`;
+            return `<Function functionDef=${JSON.stringify(this.functionDef)}>`;
           }
           call() {
             return this.func();
@@ -672,16 +672,25 @@
         }
         jsValues.GeneratorFunction = class GeneratorFunction extends jsValues.BaseFunction {
           toString() {
-            return `<GeneratorFunction fdef=${JSON.stringify(this.fdef)}>`;
+            return `<GeneratorFunction functionDef=${JSON.stringify(this.functionDef)}>`;
           }
           call() {
-            return new jsValues.Generator(this);
+            const generatorFunction = this;
+            return (function*() {return new jsValues.Generator(generatorFunction, null);})();
           }
         }
         jsValues.Generator = class Generator {
-          constructor(generatorFunction) {
+          constructor(generatorFunction, functionCall) {
             this.generatorFunction = generatorFunction;
+            if (functionCall === null || functionCall === undefined) {
+              functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
+            }
+            this.args = functionCall.convert();
+            this.currentIndex = 0;
             console.log("init", this);
+          }
+          toString() {
+            return `<Generator f=${this.generatorFunction} args=${JSON.stringify(this.args)} idx=${this.currentIndex}>`;
           }
         }
         
@@ -1871,19 +1880,19 @@
               const prepareSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
-              const fdefLocal = compiler.localVariables.next();
+              const functionDefLocal = compiler.localVariables.next();
 
               const generatedJS = `(yield* (
                 runtime.ext_moreTypesPlus.enterFunctionDef(),
                 function*(returnThis) {
                   try {  ${prepareSrc}  }
-                  finally {  ${fdefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                  finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
                   return new (runtime.ext_moreTypesPlus.Function)(
                     (function*() {
                       ${funcCodeSrc};
                       return runtime.ext_moreTypesPlus.Nothing;
                     }), 
-                    ${fdefLocal}
+                    ${functionDefLocal}
                   );
                 }()
               ))`
@@ -1935,7 +1944,7 @@
                   (function* (){})() : // Do nothing wait for later
                   runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
                 (function* (){
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.fdef);
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.functionDef);
                   try {  ${prepareSrc}  }
                   finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                   runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
@@ -1961,8 +1970,8 @@
               const local1 = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).get === "function")\n    ? ${getObj}.get(${key.asUnknown()})\n    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_UNKNOWN)
+              //const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
+              return new (imports.TypedInput)(`((${local1} = ${obj.asUnknown()}),(typeof (${local1} ? ${local1} : \{\}).get === "function")\n    ? ${local1}.get(${key.asUnknown()})\n    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${local1}}\`))`, imports.TYPE_UNKNOWN)
             },
             setIndex: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key);
@@ -2033,8 +2042,8 @@
               const local1 = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).has === "function")\n  ? ${getObj}.has(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_BOOLEAN)
+              //const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
+              return new (imports.TypedInput)(`((${local1} = ${obj.asUnknown()}),(typeof (${local1} ? ${local1} : \{\}).has === "function")\n  ? ${local1}.has(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${local1}}\`))`, imports.TYPE_BOOLEAN)
             },
             sizeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
@@ -2042,8 +2051,8 @@
               const local1 = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).size === "number")\n  ? ${getObj}.size\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_NUMBER)
+              //const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
+              return new (imports.TypedInput)(`((${local1} = ${obj.asUnknown()}),(typeof (${local1} ? ${local1} : \{\}).size === "number")\n  ? ${local1}.size\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${local1}}\`))`, imports.TYPE_NUMBER)
             },
             generalTypeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
@@ -2144,7 +2153,7 @@
                 ${nameLocal} = ${name},
                 ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}),
                 (function* () {
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.fdef);
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.functionDef);
                   try {  ${prepareSrc}  }
                   finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                   runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
@@ -2171,7 +2180,7 @@
               
               const generatedJS = `(yield* (function* () {
                 ${classLocal} = ${classInput.asUnknown()}
-                runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").fdef);  
+                runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").functionDef);  
                 try {  ${prepareSrc}  }
                 finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                 runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
@@ -2191,6 +2200,7 @@
               compiler.descendStack(node.stack, new (imports.Frame)(false));
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
+              console.log("compiler", compiler);
               const generatedJS = `new (runtime.ext_moreTypesPlus.GeneratorFunction)(
                 (function*(){
                   ${stackSrc};
