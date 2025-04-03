@@ -687,10 +687,11 @@
             }
             this.args = functionCall.convert();
             this.currentIndex = 0;
+            this.locals = {};
             console.log("init", this);
           }
           toString() {
-            return `<Generator f=${this.generatorFunction} args=${JSON.stringify(this.args)} idx=${this.currentIndex}>`;
+            return `<Generator f=${this.generatorFunction} args=${JSON.stringify(this.args)} idx=${this.currentIndex} locals=${JSON.stringify(this.locals)}>`;
           }
         }
         
@@ -792,7 +793,7 @@
           if (!(jsValues.__methodsOfObjects.has(obj))) {
             jsValues.__methodsOfObjects.set(obj, Object.create(null));
           }
-          if (!["Function", "GeneratorFunction"].includes(jsValues.typeof(method))) throw "Attempted to append method, but the method is not a function.";
+          if (!jsValues.isFunction(method)) throw "Attempted to append method, but the method is not a function.";
           if (Object.hasOwn(jsValues.__methodsOfObjects.get(obj), name)) {
             throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
@@ -1556,6 +1557,16 @@
               branchCount: 1,
               text: "generator function"
             },
+            {
+              opcode: "nextGeneratorValue",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              text: "next value of generator [GENERATOR]",
+              arguments: {
+                GENERATOR: {type: Scratch.ArgumentType.STRING, defaultValue: "Insert Generator"},
+              },
+            },
             this.makeLabel("Temporary Variables Support"),
             {
               opcode: "iterateObjectTempVars",
@@ -1811,6 +1822,10 @@
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK"),
             }),
+            nextGeneratorValue: (generator, block) => ({
+              kind: "input",
+              "generator": generator.descendInputOfBlock(block, "GENERATOR"),
+            })
           },
           js: {
             setVar: (node, compiler, imports) => {
@@ -1940,7 +1955,7 @@
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
                 ${local1} = ${func.asUnknown()},
-                (["Function", "GeneratorFunction"].includes(runtime.ext_moreTypesPlus.typeof(${local1}))) ?
+                (jsValues.isFunction(${local1})) ?
                   (function* (){})() : // Do nothing wait for later
                   runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
                 (function* (){
@@ -2179,7 +2194,7 @@
               compiler.source = oldSrc;
               
               const generatedJS = `(yield* (function* () {
-                ${classLocal} = ${classInput.asUnknown()}
+                ${classLocal} = ${classInput.asUnknown()};
                 runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").functionDef);  
                 try {  ${prepareSrc}  }
                 finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
@@ -2209,6 +2224,36 @@
               )`;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
+            nextGeneratorValue: (node, compiler, imports) => {
+              console.log("compiler", compiler);
+              const prefix = compiler.localVariables.prefix;
+              const count  = compiler.localVariables.count;
+              let vars = [];
+              
+              // find all local variables which are accessible and store them in the generator, so they can be used when execution is resumed.
+              for (let index = (compiler.source.startsWith("const") ? 1: 0); index < count; index++) { // if its executing an expression skip the first local
+                try {
+                  let v = `${prefix}${index}`;
+                  eval(v);  
+                  vars.push(v);
+                } catch (e) {
+                  if (e instanceof ReferenceError) {} 
+                  else {  throw e;  }
+                }
+              }
+              const locals = `{${vars.join(",")}}`;
+              
+              const generatorVal   = compiler.descendInput(node.generator);
+              const generatorLocal = compiler.localVariables.next();
+              const generatedJS = `(yield* (function* () {
+                ${generatorLocal} = ${generatorVal.asUnknown()};
+                if (runtime.ext_moreTypesPlus.typeof(${generatorLocal}) !== "Generator") throw "Attempted to get next value from non-generator."
+                ${generatorLocal}.locals = ${locals};
+                console.log("new", ${generatorLocal});
+                return 45;
+              })())`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+            }
           }
         }
       }
