@@ -680,7 +680,7 @@
           }
         }
         jsValues.Generator = class Generator {
-          constructor(generatorFunction, functionCall) {
+          /*constructor(generatorFunction, functionCall) {
             this.generatorFunction = generatorFunction;
             if (functionCall === null || functionCall === undefined) {
               functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
@@ -689,9 +689,47 @@
             this.currentIndex = 0;
             this.locals = {};
             console.log("init", this);
+          }*/
+          constructor(generatorFunction, functionCall) {
+            if (functionCall === null || functionCall === undefined) {
+              functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
+            }
+            this.generator = generatorFunction.func(functionCall.convert());
+            this.isDone = false;
+          }
+          getNext() {
+            const thisVal = this;
+            const outerGen = function* () {
+              if (thisVal.isDone) return jsValues.Nothing;
+              let result = { value: null };
+              
+              while (!(result.value instanceof jsValues.YieldValue)) {
+                result = thisVal.generator.next();
+                
+                if (result.done) {
+                  thisVal.isDone = true;
+                  return result.value;
+                } else {
+                  yield result.value; // to ensure synced execution
+                }
+              }
+              return result.value.getValue();
+            }
+            return outerGen();
           }
           toString() {
             return `<Generator f=${this.generatorFunction} args=${JSON.stringify(this.args)} idx=${this.currentIndex} locals=${JSON.stringify(this.locals)}>`;
+          }
+        }
+        // Temporary class to tell apart values yielded by the yield block and other yielded values.
+        jsValues.YieldValue = class YieldValue { 
+          constructor(value) {
+            this.value = value;
+          }
+          getValue() {  return this.value;  }
+          toString() {
+            console.warn("The user shouldn't interact with YieldValue instances.");
+            return "[YieldValue(${this.value})]"
           }
         }
         
@@ -1338,8 +1376,8 @@
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              text: "call function [FUNCTION]",
-              tooltip: "Executes a function. ",
+              text: "call function or generator function [FUNCTION]",
+              tooltip: "Executes a function or creates a generator from a generator function. ",
               arguments: {
                FUNCTION: {
                  type: Scratch.ArgumentType.STRING,
@@ -1555,7 +1593,21 @@
               blockShape: Scratch.BlockShape.SQUARE,
               disableMonitor: true,
               branchCount: 1,
-              text: "generator function"
+              text: "generator function",
+              tooltip: "Creates a generator function.",
+            },
+            {
+              opcode: "yieldValue",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              text: "yield [VALUE]",
+              tooltip: "Usable within generator functions. Yields the given value.",
+              arguments: {
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: ""
+                }
+              }
             },
             {
               opcode: "nextGeneratorValue",
@@ -1821,6 +1873,10 @@
             generatorFunction: (generator, block) => ({
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK"),
+            }),
+            yieldValue: (generator, block) => ({
+              kind: "stack",
+              value: generator.descendInputOfBlock(block, "VALUE"),
             }),
             nextGeneratorValue: (generator, block) => ({
               kind: "input",
@@ -2224,36 +2280,22 @@
               )`;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
+            yieldValue: (node, compiler, imports) => {
+              const value       = compiler.descendInput(node.value);
+              const generatedJS = `yield (new runtime.ext_moreTypesPlus.YieldValue(${value.asUnknown()}));\n`;
+              compiler.source += generatedJS;
+            },
             nextGeneratorValue: (node, compiler, imports) => {
-              console.log("compiler", compiler);
-              const prefix = compiler.localVariables.prefix;
-              const count  = compiler.localVariables.count;
-              let vars = [];
-              
-              // find all local variables which are accessible and store them in the generator, so they can be used when execution is resumed.
-              for (let index = (compiler.source.startsWith("const") ? 1: 0); index < count; index++) { // if its executing an expression skip the first local
-                try {
-                  let v = `${prefix}${index}`;
-                  eval(v);  
-                  vars.push(v);
-                } catch (e) {
-                  if (e instanceof ReferenceError) {} 
-                  else {  throw e;  }
-                }
-              }
-              const locals = `{${vars.join(",")}}`;
-              
               const generatorVal   = compiler.descendInput(node.generator);
               const generatorLocal = compiler.localVariables.next();
-              const generatedJS = `(yield* (function* () {
-                ${generatorLocal} = ${generatorVal.asUnknown()};
-                if (runtime.ext_moreTypesPlus.typeof(${generatorLocal}) !== "Generator") throw "Attempted to get next value from non-generator."
-                ${generatorLocal}.locals = ${locals};
-                console.log("new", ${generatorLocal});
-                return 45;
-              })())`;
+              const generatedJS = `yield* (
+                ${generatorLocal} = ${generatorVal.asUnknown()},
+                (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
+                  ${generatorLocal}.getNext() :
+                  runtime.ext_moreTypesPlus.throwErr("Attempted to get next value of non-generator.")
+              )`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
-            }
+            },
           }
         }
       }
