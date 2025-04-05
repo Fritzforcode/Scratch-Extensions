@@ -50,23 +50,7 @@
         jsValues.throwErr = function* (msg) {
           throw msg;
         }
-        const stores = new Map();
-        jsValues.getStore = function(thread, str) {
-          if (!stores.get(thread)) {
-            stores.set(thread, {[str]: {}});
-          }
-          if (!stores.get(thread)[str]) {
-            stores.get(thread)[str] = {};
-          }
-          return stores.get(thread)[str];
-        }
-        jsValues.retireStore= function(thread, str) {
-          const store = jsValues.getStore(thread, str);
-          const val = store[str];
-          delete store[str]; 
-          return val;
-        }
-        jsValues._GETVAR = function _GETVAR(varName) {
+        jsValues._GETVAR = function (varName) {
           const targets = runtime.targets;
           for (const targetIdx in targets) {
             const target = targets[targetIdx];
@@ -82,7 +66,7 @@
           }
           return [false, "undefined"];
         }
-        jsValues._SETVAR = function _SETVAR(varName, value) {
+        jsValues._SETVAR = function (varName, value) {
           const targets = runtime.targets;
           let varFound = false;
           for (const targetIdx in targets) {
@@ -102,7 +86,7 @@
             throw "Variable \"" + varName + "\" not found"
           }
         }
-        jsValues._GENERATEVARID = function _GENERATEVARID() {
+        jsValues._GENERATEVARID = function () {
           const varIdCharset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#%()*+,-./:;=?@[]^_`{|}~";
           let token = '';
           for (let i = 0; i < 20; i++) {
@@ -112,7 +96,7 @@
           return token;
         }
           
-        jsValues._CREATEVAR = function _CREATEVAR(targetIdx, varName) {
+        jsValues._CREATEVAR = function (targetIdx, varName) {
           if (jsValues._GETVAR(varName)[0]) {
             return; // if var alredy exists, do nothing
           }
@@ -125,7 +109,7 @@
           target.lookupOrCreateVariable(id, varName);
         }
         
-        jsValues._DELETEVAR = function _DELETEVAR(varName) {
+        jsValues._DELETEVAR = function (varName) {
           const targets = runtime.targets;
           for (const targetIdx in targets) {
             const target = targets[targetIdx];
@@ -145,7 +129,7 @@
           return (typeof obj === "string") ? JSON.stringify(obj) : obj.toString();
         }
 
-        jsValues.typeof = function TYPEOF(value) {
+        jsValues.typeof = function (value) {
           let isPrimitive = Object(value) !== value;
           if (isPrimitive) {
             let type = Object.prototype.toString.call(value).slice(8, -1).toLowerCase()
@@ -183,11 +167,11 @@
           }
           return "unknown"
         }
-        jsValues.exactTypeof = function EXACTTYPEOF(value) {
+        jsValues.classNameOf = function (value) {
           if (value?.hasOwnProperty && value.hasOwnProperty("__className")) {
             return value.__className;
           }
-          return jsValues.typeof(value);
+          throw "Attempted to get class name of non-custom class instance.";
         }
         jsValues.clone = function CLONE(value) {
           if (jsValues.typeof(value) === "Object") {
@@ -680,16 +664,6 @@
           }
         }
         jsValues.Generator = class Generator {
-          /*constructor(generatorFunction, functionCall) {
-            this.generatorFunction = generatorFunction;
-            if (functionCall === null || functionCall === undefined) {
-              functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
-            }
-            this.args = functionCall.convert();
-            this.currentIndex = 0;
-            this.locals = {};
-            console.log("init", this);
-          }*/
           constructor(generatorFunction, functionCall) {
             if (functionCall === null || functionCall === undefined) {
               functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
@@ -718,7 +692,7 @@
             return outerGen();
           }
           toString() {
-            return `<Generator f=${this.generatorFunction} args=${JSON.stringify(this.args)} idx=${this.currentIndex} locals=${JSON.stringify(this.locals)}>`;
+            return `<Generator generator=${this.generator} isDone=${this.isDone}>`;
           }
         }
         // Temporary class to tell apart values yielded by the yield block and other yielded values.
@@ -819,7 +793,7 @@
             console.log("init", this);
           }
           toString() {
-            return "<Class>";
+            return `<Class>`;
           }
           toJSON() {
             return "Classes do not save";
@@ -1113,11 +1087,11 @@
               }
             },
             {
-              opcode: "exactTypeof",
+              opcode: "classNameOf",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
-              text: "exact typeof [OBJECT]",
-              tooltip: "Gets the exact type of an object.",
+              text: "class name of [OBJECT]",
+              tooltip: "Gets the class name of an object.",
               arguments: {
                 OBJECT: {
                   type: Scratch.ArgumentType.STRING,
@@ -1376,12 +1350,12 @@
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              text: "call function or generator function [FUNCTION]",
+              text: "call function [FUNCTION]",
               tooltip: "Executes a function or creates a generator from a generator function. ",
               arguments: {
                FUNCTION: {
                  type: Scratch.ArgumentType.STRING,
-                 defaultValue: "Insert Function Here",
+                 defaultValue: "Insert (Generator-) Function Here",
                }
               }
             },
@@ -1586,6 +1560,8 @@
               }
             },
             this.makeLabel("Generator Functions"),
+            this.makeLabel("Use the \"call function\" block"),
+            this.makeLabel("to create a generator instance"),
             {
               opcode: "generatorFunction",
               func: "noComp",
@@ -1615,6 +1591,15 @@
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               text: "next value of generator [GENERATOR]",
+              arguments: {
+                GENERATOR: {type: Scratch.ArgumentType.STRING, defaultValue: "Insert Generator"},
+              },
+            },
+            {
+              opcode: "generatorIsDone",
+              func: "noComp",
+              blockType: Scratch.BlockType.BOOLEAN,
+              text: "is generator [GENERATOR] done?",
               arguments: {
                 GENERATOR: {type: Scratch.ArgumentType.STRING, defaultValue: "Insert Generator"},
               },
@@ -1799,20 +1784,20 @@
             }),
             keyExists: (generator, block) => ({
               kind: "input",
-              key: generator.descendInputOfBlock(block, "KEY"),
-              object: generator.descendInputOfBlock(block, "OBJECT")
+              key  : generator.descendInputOfBlock(block, "KEY"),
+              object: generator.descendInputOfBlock(block, "OBJECT"),
             }),
             sizeof: (generator, block) => ({
               kind: "input",
-              object: generator.descendInputOfBlock(block, "OBJECT")
+              object: generator.descendInputOfBlock(block, "OBJECT"),
             }),
             generalTypeof: (generator, block) => ({
               kind: "input",
-              object: generator.descendInputOfBlock(block, "OBJECT")
+              object: generator.descendInputOfBlock(block, "OBJECT"),
             }),
-            exactTypeof: (generator, block) => ({
+            classNameOf: (generator, block) => ({
               kind: "input",
-              object: generator.descendInputOfBlock(block, "OBJECT")
+              object: generator.descendInputOfBlock(block, "OBJECT"),
             }),
             createSymbol: (generator, block) => ({
               kind: "input"
@@ -1881,7 +1866,11 @@
             nextGeneratorValue: (generator, block) => ({
               kind: "input",
               "generator": generator.descendInputOfBlock(block, "GENERATOR"),
-            })
+            }),
+            generatorIsDone: (generator, block) => ({
+              kind: "input",
+              "generator": generator.descendInputOfBlock(block, "GENERATOR"),
+            }),
           },
           js: {
             setVar: (node, compiler, imports) => {
@@ -1987,21 +1976,21 @@
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
             },
             callFunctionOutput: (node, compiler, imports) => {
-              const local = compiler.localVariables.next();
-              const func = compiler.descendInput(node.func);
+              const funcLocal = compiler.localVariables.next();
+              const func      = compiler.descendInput(node.func);
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
-                ${local} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.isFunction(${local})) ?
-                    ${local}.call() :
+                ${funcLocal} = ${func.asUnknown()},
+                (runtime.ext_moreTypesPlus.isFunction(${funcLocal})) ?
+                    ${funcLocal}.call() :
                     runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
               ))`;
               console.log(generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             prepareAndCallFunctionOutput: (node, compiler, imports) => {
-              const local1 = compiler.localVariables.next();
-              const local2 = compiler.localVariables.next();
+              const funcLocal         = compiler.localVariables.next();
+              const functionCallLocal = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);            
               const oldSrc = compiler.source;
               compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
@@ -2010,16 +1999,16 @@
               
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
-                ${local1} = ${func.asUnknown()},
-                (jsValues.isFunction(${local1})) ?
+                ${funcLocal} = ${func.asUnknown()},
+                (jsValues.isFunction(${funcLocal})) ?
                   (function* (){})() : // Do nothing wait for later
                   runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
                 (function* (){
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${local1}.functionDef);
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.functionDef);
                   try {  ${prepareSrc}  }
-                  finally {  ${local2} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${local2}.convert());
-                  try {  return yield* ${local1}.call();  }
+                  finally {  ${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+                  runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
+                  try {  return yield* ${funcLocal}.call();  }
                   finally {  runtime.ext_moreTypesPlus.exitScope();  }
                 })()
               ))`;
@@ -2030,51 +2019,78 @@
               compiler.source += `runtime.ext_moreTypesPlus.setNextFunctionCallArg(${value.asUnknown()});\n`;
             },
             setCallArgumentByName: (node, compiler, imports) => {
-              const name  = compiler.descendInput(node.name);
+              const name  = compiler.descendInput(node.name );
               const value = compiler.descendInput(node.value);
               compiler.source += `runtime.ext_moreTypesPlus.setFunctionCallArgByName(${name.asString()}, ${value.asUnknown()});\n`;
             },            
             getIndex: (node, compiler, imports) => {
-              const key = compiler.descendInput(node.key);
+              const key = compiler.descendInput(node.key   );
               const obj = compiler.descendInput(node.object);
               
-              const local1 = compiler.localVariables.next();
+              const objLocal = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              //const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${local1} = ${obj.asUnknown()}),(typeof (${local1} ? ${local1} : \{\}).get === "function")\n    ? ${local1}.get(${key.asUnknown()})\n    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${local1}}\`))`, imports.TYPE_UNKNOWN)
+              const generatedJS = `(
+                ${objLocal} = ${obj.asUnknown()},
+                (
+                  typeof (${objLocal} ? ${objLocal} : {}).get === "function"
+                    ? ${objLocal}.get(${key.asUnknown()})
+                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
+                )
+              )`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
             setIndex: (node, compiler, imports) => {
-              const key = compiler.descendInput(node.key);
-              const value = compiler.descendInput(node.value);
-              const obj = compiler.descendInput(node.object);
+              const key   = compiler.descendInput(node.key   );
+              const value = compiler.descendInput(node.value );
+              const obj   = compiler.descendInput(node.object);
               
-              const local1 = compiler.localVariables.next();
-              compiler.source += `const ${local1} = ${obj.asUnknown()}\n;((typeof (${local1} ? ${local1} : \{\}).set === "function")\n  ? ${local1}.set(${key.asUnknown()}, ${value.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot set properties of \${${local1}}\`));\n`
+              const objLocal = compiler.localVariables.next();
+              const generatedJS = `
+                const ${objLocal} = ${obj.asUnknown()};
+                (
+                  (typeof (${objLocal} ? ${objLocal} : {}).set === "function")
+                    ? ${objLocal}.set(${key.asUnknown()}, ${value.asUnknown()})
+                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot set properties of \${${objLocal}}\`)
+                );
+              `;
+              compiler.source += generatedJS;
             },
             iterateObject: (node, compiler, imports) => {
-              const keyVar = compiler.descendVariable(node.key);
+              const keyVar    = compiler.descendVariable(node.key );
               const valueVar = compiler.descendVariable(node.value);
               const obj = compiler.descendInput(node.object);
               // im stupid and dont know which variables are used so im just going to use a local variable
-              const objVar = compiler.localVariables.next();
-              const iterable = compiler.localVariables.next();
-              const keyValue = compiler.localVariables.next();
-              compiler.source += `const ${objVar} = ${obj.asUnknown()};\nconst ${iterable} = runtime.ext_moreTypesPlus.toIterable(${objVar});\nfor (const ${keyValue} of ${iterable}) {${keyVar.source}=${keyValue}[0];${valueVar.source}=${keyValue}[1];`
+              const iterableLocal = compiler.localVariables.next();
+              const keyLocal      = compiler.localVariables.next();
+              const generatedJS = `
+                const ${iterableLocal} = runtime.ext_moreTypesPlus.toIterable(${obj.asUnknown()});
+                for (const ${keyLocal} of ${iterableLocal}) {
+                  ${keyVar.source} = ${keyLocal}[0];
+                  ${valueVar.source} = ${keyLocal}[1];
+                }
+              `;
+              compiler.source += generatedJS;
               // time to add the substack
               compiler.descendStack(node.stack, new (imports.Frame)(true, "moreTypesPlus.iterateObject"));
               compiler.yieldLoop();
               compiler.source += "};\n"
             },
             iterateObjectTempVars: (node, compiler, imports) => {
-              const keyVar = compiler.descendInput(node.key);
-              const valueVar = compiler.descendInput(node.value);
-              const obj = compiler.descendInput(node.object);
+              const keyVar   = compiler.descendInput(node.key   );
+              const valueVar = compiler.descendInput(node.value );
+              const obj      = compiler.descendInput(node.object);
               // im stupid and dont know which variables are used so im just going to use a local variable
-              const objVar = compiler.localVariables.next();
-              const iterable = compiler.localVariables.next();
-              const keyValue = compiler.localVariables.next();
-              compiler.source += `const ${objVar} = ${obj.asUnknown()};\nconst ${iterable} = runtime.ext_moreTypesPlus.toIterable(${objVar});\nfor (const ${keyValue} of ${iterable}) {tempVars[${keyVar.asString()}]=${keyValue}[0];tempVars[${valueVar.asString()}]=${keyValue}[1];`
+              const iterableLocal = compiler.localVariables.next();
+              const keyLocal      = compiler.localVariables.next();
+              const generatedJS = `
+                const ${iterableLocal} = runtime.ext_moreTypesPlus.toIterable(${obj.asUnknown()});
+                for (const ${keyLocal} of ${iterableLocal}) {
+                  tempVars[${keyVar.asString()}] = ${keyLocal}[0];
+                  tempVars[${valueVar.asString()}] = ${keyLocal}[1];
+                }
+              `;            
+              compiler.source += generatedJS;
               // time to add the substack
               compiler.descendStack(node.stack, new (imports.Frame)(true, "moreTypesPlus.iterateObject"));
               compiler.yieldLoop();
@@ -2094,44 +2110,71 @@
               const key = compiler.descendInput(node.key);
               const obj = compiler.descendInput(node.object);
               
-              const local1 = compiler.localVariables.next();
-              
-              compiler.source += `const ${local1} = ${obj.asUnknown()};\n(typeof (${local1} ? ${local1} : {}).delete === "function")\n  ? ${local1}.delete(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot delete properties of \${${local1}}\`)\n`
+              const objLocal = compiler.localVariables.next();
+              const generatedJS = `
+                const ${objLocal} = ${obj.asUnknown()};
+                (
+                  typeof (${objLocal} ? ${objLocal} : {}).delete === "function"
+                    ? ${objLocal}.delete(${key.asUnknown()})
+                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot delete properties of \${${objLocal}}\`)
+                );
+              `;
+              compiler.source += generatedJS;
             },
             addItem: (node, compiler, imports) => {
               const value = compiler.descendInput(node.value);
               const obj = compiler.descendInput(node.object);
               
-              const local1 = compiler.localVariables.next();
-              
-              compiler.source += `const ${local1} = ${obj.asUnknown()};\n(typeof (${local1} ? ${local1} : {}).add === "function")\n  ? ${local1}.add(${value.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot add to the end of \${${local1}}\`)\n`
+              const objLocal = compiler.localVariables.next();
+              const generatedJS = `
+                const ${objLocal} = ${obj.asUnknown()};
+                (
+                  typeof (${objLocal} ? ${objLocal} : {}).add === "function"
+                    ? ${objLocal}.add(${value.asUnknown()})
+                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot add to the end of \${${objLocal}}\`)
+                );
+              `;
+              compiler.source += generatedJS;
             },
             keyExists: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key);
               const obj = compiler.descendInput(node.object);
               
-              const local1 = compiler.localVariables.next();
-              // i forgor that we cannot use const in an expression.
-              // so i had to implement a store system.
-              //const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${local1} = ${obj.asUnknown()}),(typeof (${local1} ? ${local1} : \{\}).has === "function")\n  ? ${local1}.has(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${local1}}\`))`, imports.TYPE_BOOLEAN)
+              const objLocal = compiler.localVariables.next();
+              const generatedJS = `(
+                (${objLocal} = ${obj.asUnknown()}),
+                (
+                  typeof (${objLocal} ? ${objLocal} : {}).has === "function"
+                    ? ${objLocal}.has(${key.asUnknown()})
+                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
+                )
+              )`;
+              //return new (imports.TypedInput)(generatedJS, imports.TYPE_BOOLEAN)
+              return new (imports.TypedInput)(`((${objLocal} = ${obj.asUnknown()}),(typeof (${objLocal} ? ${objLocal} : \{\}).has === "function")\n  ? ${objLocal}.has(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`))`, imports.TYPE_BOOLEAN)
             },
             sizeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
               
-              const local1 = compiler.localVariables.next();
-              // i forgor that we cannot use const in an expression.
-              // so i had to implement a store system.
-              //const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${local1} = ${obj.asUnknown()}),(typeof (${local1} ? ${local1} : \{\}).size === "number")\n  ? ${local1}.size\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${local1}}\`))`, imports.TYPE_NUMBER)
+              const objLocal = compiler.localVariables.next();
+              const generatedJS = `
+                (
+                  (${objLocal} = ${obj.asUnknown()}),
+                  (
+                    typeof (${objLocal} ? ${objLocal} : {}).size === "number"
+                      ? ${objLocal}.size
+                      : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
+                  )
+                )
+              `;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_NUMBER);
             },
             generalTypeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
-              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.typeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER)
+              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.typeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER);
             },
-            exactTypeof: (node, compiler, imports) => {
+            classNameOf: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
-              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.exactTypeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER)
+              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.classNameOf(${obj.asUnknown()}))`, imports.TYPE_NUMBER);
             },
             createSymbol: (node, compiler, imports) => {
               return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus).Symbol()`, imports.TYPE_UNKNOWN);
@@ -2239,7 +2282,6 @@
               return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.constructFrom(${constructor})))`, imports.TYPE_UNKNOWN);
             },
             preprareAndConstruct: (node, compiler, imports) => {
-              console.log("node", node);
               const classInput = compiler.descendInput(node.class);
               const classLocal = compiler.localVariables.next();
               const callLocal  = compiler.localVariables.next();
@@ -2293,9 +2335,20 @@
                 (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
                   ${generatorLocal}.getNext() :
                   runtime.ext_moreTypesPlus.throwErr("Attempted to get next value of non-generator.")
-              )`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+              )`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
+            generatorIsDone: (node, compiler, imports) => {
+              const generatorVal   = compiler.descendInput(node.generator);
+              const generatorLocal = compiler.localVariables.next();
+              const generatedJS = `yield* (
+                ${generatorLocal} = ${generatorVal.asUnknown()},
+                (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
+                  (function*() {return ${generatorLocal}.isDone})():
+                  runtime.ext_moreTypesPlus.throwErr("Attempted to ask, wether a non-generator is done.")
+              )`;
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            }
           }
         }
       }
