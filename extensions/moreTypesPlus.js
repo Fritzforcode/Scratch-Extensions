@@ -1271,7 +1271,7 @@
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
-              blockType: Scratch.BlockType.OUTPUT, // basically just undefined
+              blockType: Scratch.BlockType.REPORTER, // basically just undefined
               disableMonitor: true,
               branchCount: 1,
               text: "anonymous function"
@@ -1281,7 +1281,7 @@
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
-              blockType: Scratch.BlockType.OUTPUT, // basically just undefined
+              blockType: Scratch.BlockType.REPORTER, // basically just undefined
               disableMonitor: true,
               branchCount: 2,
               text: ["prepare", "and create anonymous function"],
@@ -1573,6 +1573,17 @@
               tooltip: "Creates a generator function.",
             },
             {
+              opcode: "prepareAndCreateGeneratorFunction",
+              func: "noComp",
+              output: ["Function"],
+              blockShape: Scratch.BlockShape.SQUARE,
+              blockType: Scratch.BlockType.REPORTER, // basically just undefined
+              disableMonitor: true,
+              branchCount: 2,
+              text: ["prepare", "and create generator function"],
+              tooltip: "Allows the definition of arguments before creating a generator function.",
+            },
+            {
               opcode: "yieldValue",
               func: "noComp",
               blockType: Scratch.BlockType.COMMAND,
@@ -1858,6 +1869,11 @@
             generatorFunction: (generator, block) => ({
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK"),
+            }),
+            prepareAndCreateAnonymousGenerator: (generator, block) => ({
+              kind: "input",
+              prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
+              funcCode   : generator.descendSubstack(block, "SUBSTACK2"),
             }),
             yieldValue: (generator, block) => ({
               kind: "stack",
@@ -2321,6 +2337,34 @@
                 }), null
               )`;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+            },
+            prepareAndCreateGeneratorFunction: (node, compiler, imports) => {
+              const oldSrc = compiler.source;
+              
+              compiler.descendStack(node.funcCode, new (imports.Frame)(false));
+              const funcCodeSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
+              const prepareSrc = compiler.source.substring(oldSrc.length);
+              compiler.source = oldSrc;
+              
+              const functionDefLocal = compiler.localVariables.next();
+
+              const generatedJS = `(yield* (
+                runtime.ext_moreTypesPlus.enterFunctionDef(),
+                function*(returnThis) {
+                  try {  ${prepareSrc}  }
+                  finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                  return new (runtime.ext_moreTypesPlus.GeneratorFunction)(
+                    (function*(){
+                      ${stackSrc};
+                      return runtime.ext_moreTypesPlus.Nothing;
+                    }), ${functionDefLocal}
+                  );
+                }()
+              ))`
+              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             yieldValue: (node, compiler, imports) => {
               const value       = compiler.descendInput(node.value);
