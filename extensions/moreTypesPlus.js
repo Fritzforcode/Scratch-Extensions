@@ -156,6 +156,9 @@
           if (value instanceof jsValues.Function) {
             return "Function"
           }
+          if (value instanceof jsValues.Method) {
+            return "Method"
+          }
           if (value instanceof jsValues.GeneratorFunction) {
             return "GeneratorFunction"
           }
@@ -276,7 +279,7 @@
           }
         }
         jsValues.enterFunctionCall = function (functionDef) {
-          if (functionDef === undefined || functionDef === null) {
+          if (functionDef === null) {
             functionDef = new jsValues.TempFunctionDef();
           }
           jsValues.functionCallLayers.push(new jsValues.TempFunctionCall(functionDef));
@@ -322,9 +325,12 @@
           }
         }
         jsValues.enterScope = function (args) {
+          if (args === null) args = {};
           jsValues.functionScopeLayers.push(new jsValues.TempScope(args));
+          console.log("after enter", jsValues.functionScopeLayers);
         }
         jsValues.exitScope = function () {
+          console.log("before exit", jsValues.functionScopeLayers);
           return jsValues.functionScopeLayers.pop();
         }
         jsValues.getFunctionArgument = function (name) {
@@ -620,15 +626,10 @@
             this.functionDef  = functionDef;
             console.log("init", this);
           }
-        }
-        jsValues.Function = class Function extends jsValues.BaseFunction {
-          toString() {
-            return `<Function functionDef=${JSON.stringify(this.functionDef)}>`;
+          getFunctionDef() {
+            return this.functionDef;
           }
-          call() {
-            return this.func();
-          }
-          callWithThis(thisVal, methodName) {
+          generateOuterGen(thisVal, methodName) {
             const innerGen = this.func.call(thisVal);
             const outerGen = function* () {
               let result = { done: false };
@@ -652,6 +653,17 @@
             }
             return outerGen();
           }
+        }
+        jsValues.Function = class Function extends jsValues.BaseFunction {
+          toString() {
+            return `<Function functionDef=${JSON.stringify(this.functionDef)}>`;
+          }
+          call() {
+            return this.func();
+          }
+          callWithThis(thisVal, methodName) {
+            return super.generateOuterGen(thisVal, methodName);
+          }
             
         }
         jsValues.GeneratorFunction = class GeneratorFunction extends jsValues.BaseFunction {
@@ -662,10 +674,15 @@
             const generatorFunction = this;
             return (function*() {return new jsValues.Generator(generatorFunction, null);})();
           }
+          callWithThis(thisVal, methodName) {
+            this.func = super.generateOuterGen(thisVal, methodName);
+            const generatorFunction = this;
+            return (function*() {return new jsValues.Generator(generatorFunction, null);})();
+          }
         }
         jsValues.Generator = class Generator {
           constructor(generatorFunction, functionCall) {
-            if (functionCall === null || functionCall === undefined) {
+            if (functionCall === null) {
               functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
             }
             this.generator = generatorFunction.func(functionCall.convert());
@@ -693,6 +710,22 @@
           }
           toString() {
             return `<Generator generator=${this.generator} isDone=${this.isDone}>`;
+          }
+        }
+        jsValues.Method = class Method {
+          constructor(func, thisVal, methodName) {
+            this.func       = func;
+            this.thisVal    = thisVal;
+            this.methodName = methodName;
+          }
+          toString() {
+            return `<Method ${JSON.stringify(this.methodName)} of ${this.thisVal}>`
+          }
+          getFunctionDef() {
+            return this.func.getFunctionDef();
+          }
+          call() {
+            return this.func.callWithThis(this.thisVal, this.methodName);
           }
         }
         // Temporary class to tell apart values yielded by the yield block and other yielded values.
@@ -805,7 +838,7 @@
           if (!(jsValues.__methodsOfObjects.has(obj))) {
             jsValues.__methodsOfObjects.set(obj, Object.create(null));
           }
-          if (!jsValues.isFunction(method)) throw "Attempted to append method, but the method is not a function.";
+          if (!jsValues.isFunctionOrMethod(method)) throw "Attempted to append method, but the method is not a function.";
           if (Object.hasOwn(jsValues.__methodsOfObjects.get(obj), name)) {
             throw `Object ${obj} already has method ${name}, cannot append method.`;
           }
@@ -814,7 +847,7 @@
           return obj;
         }
         jsValues.getObjMethod = (obj, name) => {
-          if (!jsValues.isObject(obj)) throw "Attempted to get method of non-class/non-function " + obj;
+          if (!jsValues.isObject(obj)) throw "Attempted to get method of non-object " + obj;
           const methods = jsValues.__methodsOfObjects.get(obj);
           
           if (!methods) {
@@ -842,20 +875,20 @@
                 oldWrapper = newWrapper; // go to next iteration
               }
             }
-            throw `Attempted to call non-existent method ${name} on ${obj}`;
+            throw `Attempted to get non-existent method ${name} of ${obj}`;
           }
           if (!methods[name]) {
-            throw `Attempted to call non-existent method ${name} on ${obj}`;
+            throw `Attempted to get non-existent method ${name} of ${obj}`;
           }
           return methods[name];
         }
         jsValues.getClassMethod = (cls, name) => {
-          if (jsValues.typeof(cls) !== "Class") throw "Attempted to get method of non-class/non-function " + cls;
+          if (jsValues.typeof(cls) !== "Class") throw "Attempted to get method of non-class " + cls;
           return jsValues.getObjMethod((new (cls.class)()), name);
         }
         jsValues.getSuperMethod = (obj, name) => {
           if (!jsValues.isObject(obj)) {
-            throw new Error(`Attempted to get method on invalid receiver ${obj}`);
+            throw new Error(`Attempted to get method of invalid receiver ${obj}`);
           }
           let prototype = Object.getPrototypeOf(obj);
           while (prototype) {
@@ -875,7 +908,7 @@
             }
             prototype = Object.getPrototypeOf(prototype);
           }
-          throw new Error(`Attempted to call non-existent method ${name} on ${obj}`);
+          throw new Error(`Attempted to get non-existent method ${name} of ${obj}`);
         }
         // OOP Helper functions
         jsValues.canConstruct = (value) => {
@@ -915,8 +948,8 @@
         jsValues.isObject = (value) => {
           return (jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Map");
         }
-        jsValues.isFunction = (value) => {
-          return (jsValues.typeof(value) === "Function" || jsValues.typeof(value) === "GeneratorFunction");
+        jsValues.isFunctionOrMethod = (value) => {
+          return (jsValues.typeof(value) === "Function" || jsValues.typeof(value) === "Method" || jsValues.typeof(value) === "GeneratorFunction");
         }
         /*jsValues.trySuper = function* (thisVal) {
           const constructor = thisVal.constructor;
@@ -1267,7 +1300,7 @@
             // https://github.com/PenguinMod/PenguinMod-Vm/blob/develop/src/compiler/jsgen.js#L556
             this.makeLabel("Anonymous Function Definitions"),
             {
-              opcode: "anonymousFunction",
+              opcode: "createFunction",
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
@@ -1277,7 +1310,7 @@
               text: "anonymous function"
             },
             {
-              opcode: "prepareAndCreateAnonymousFunction",
+              opcode: "prepareAndCreateFunction",
               func: "noComp",
               output: ["Function"],
               blockShape: Scratch.BlockShape.SQUARE,
@@ -1346,7 +1379,7 @@
             },
             this.makeLabel("Anonymous Function Calls"),
             {
-              opcode: "callFunctionOutput",
+              opcode: "callFunction",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
@@ -1360,7 +1393,7 @@
               }
             },
             {
-              opcode: "prepareAndCallFunctionOutput",
+              opcode: "prepareAndCallFunction",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
@@ -1406,24 +1439,24 @@
             },
             this.makeLabel("OOP"),
             {
-              opcode: "anonymousClassInit",
+              opcode: "createClassInit",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               disableMonitor: true,
-              text: "create anonymous class [NAME] with __init__ [INIT]",
+              text: "create class [NAME] with __init__ [INIT]",
               arguments: {
                 NAME: {type: Scratch.ArgumentType.STRING, defaultValue: "Class Name"},
                 INIT: {type: Scratch.ArgumentType.STRING, defaultValue: "Insert __init__ Function Here"},
               }
             },
             {
-              opcode: "anonymousClassExtends",
+              opcode: "createClassExtends",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               disableMonitor: true,
-              text: "create anonymous class [NAME] extends [SUPER]",
+              text: "create class [NAME] extends [SUPER]",
               arguments: {
                 NAME : {type: Scratch.ArgumentType.STRING, defaultValue: "Class Name"},
                 SUPER: {
@@ -1434,12 +1467,12 @@
               }
             },
             {
-              opcode: "anonymousClassExtendsInit",
+              opcode: "createClassExtendsInit",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               disableMonitor: true,
-              text: "create anonymous class [NAME] extends [SUPER] with __init__ [INIT]",
+              text: "create class [NAME] extends [SUPER] with __init__ [INIT]",
               arguments: {
                 NAME : {type: Scratch.ArgumentType.STRING, defaultValue: "Class Name"},
                 SUPER: {
@@ -1479,31 +1512,12 @@
               }
             },
             {
-              opcode: "callMethodOutput",
+              opcode: "getMethod",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              tooltip: "Calls a method with a \"this\" value",
-              text: "call method with name [NAME] on [VALUE]",
-              arguments: {
-                NAME: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "foo"
-                },
-                VALUE: {
-                  type: Scratch.ArgumentType.STRING,
-                  defaultValue: "Insert Object / Array / Set / Map Here"
-                }
-              }
-            },
-            {
-              opcode: "prepareAndCallMethodOutput",
-              func: "noComp",
-              blockType: Scratch.BlockType.REPORTER,
-              blockShape: Scratch.BlockShape.SQUARE,
-              branchCount: 1,
-              tooltip: "Calls a method with a \"this\" value after preperation.",
-              text: ["prepare", "and call method with name [NAME] on [VALUE]"],
+              tooltip: "Gets a method of on object.",
+              text: "get method with name [NAME] of [VALUE]",
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
@@ -1703,11 +1717,11 @@
               kind: "input",
               type: block.fields.CLASS.value,
             }),
-            anonymousFunction: (generator, block) => ({
+            createFunction: (generator, block) => ({
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK")
             }),
-            prepareAndCreateAnonymousFunction: (generator, block) => ({
+            prepareAndCreateFunction: (generator, block) => ({
               kind: "input",
               prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
               funcCode   : generator.descendSubstack(block, "SUBSTACK2"),
@@ -1729,11 +1743,11 @@
               kind: "stack",
               value: generator.descendInputOfBlock(block, "VALUE")
             }),
-            callFunctionOutput: (generator, block) => (generator.script.yields = true, {
+            callFunction: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               func: generator.descendInputOfBlock(block, "FUNCTION")
             }),
-            prepareAndCallFunctionOutput: (generator, block) => (generator.script.yields = true, {
+            prepareAndCallFunction: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               func: generator.descendInputOfBlock(block, "FUNCTION"),
               prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
@@ -1816,17 +1830,17 @@
             nothingValue: (generator, block) => ({
               kind: "input"
             }),
-            anonymousClassInit: (generator, block) => ({
+            createClassInit: (generator, block) => ({
               kind: "input",
               name: generator.descendInputOfBlock(block, "NAME"), 
               init: generator.descendInputOfBlock(block, "INIT"),
             }),
-            anonymousClassExtends: (generator, block) => ({
+            createClassExtends: (generator, block) => ({
               kind: "input",
               name      : generator.descendInputOfBlock(block, "NAME" ), 
               superClass: generator.descendInputOfBlock(block, "SUPER"),
             }),
-            anonymousClassExtendsInit: (generator, block) => ({
+            createClassExtendsInit: (generator, block) => ({
               kind: "input",
               name      : generator.descendInputOfBlock(block, "NAME" ), 
               superClass: generator.descendInputOfBlock(block, "SUPER"),
@@ -1841,16 +1855,10 @@
               name: generator.descendInputOfBlock(block, "NAME"),
               obj: generator.descendInputOfBlock(block, "VALUE")
             }),
-            callMethodOutput: (generator, block) => (generator.script.yields = true, {
+            getMethod: (generator, block) => (generator.script.yields = true, {
               kind: "input",
               name: generator.descendInputOfBlock(block, "NAME"),
               obj: generator.descendInputOfBlock(block, "VALUE")
-            }),
-            prepareAndCallMethodOutput: (generator, block) => (generator.script.yields = true, {
-              kind: "input",
-              name: generator.descendInputOfBlock(block, "NAME"),
-              obj: generator.descendInputOfBlock(block, "VALUE"),
-              prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
             }),
             preprareAndConstruct: (generator, block) => (generator.script.yields = true, {
               kind: "input",
@@ -1870,7 +1878,7 @@
               kind: "input",
               stack: generator.descendSubstack(block, "SUBSTACK"),
             }),
-            prepareAndCreateAnonymousGenerator: (generator, block) => ({
+            prepareAndCreateGeneratorFunction: (generator, block) => ({
               kind: "input",
               prepareCode: generator.descendSubstack(block, "SUBSTACK" ),
               funcCode   : generator.descendSubstack(block, "SUBSTACK2"),
@@ -1931,7 +1939,7 @@
               }
               return new (imports.TypedInput)(object, imports.TYPE_UNKNOWN)
             },
-            anonymousFunction: (node, compiler, imports) => {
+            createFunction: (node, compiler, imports) => {
               // big hack ALSO STOLEN
               const oldSrc = compiler.source;
               compiler.descendStack(node.stack, new (imports.Frame)(false));
@@ -1939,13 +1947,13 @@
               compiler.source = oldSrc;
               const generatedJS = `new (runtime.ext_moreTypesPlus.Function)(
                 (function*(){
-                  ${stackSrc};
+                  ${stackSrc}
                   return runtime.ext_moreTypesPlus.Nothing;
                 }), null
               )`;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
             },
-            prepareAndCreateAnonymousFunction: (node, compiler, imports) => {
+            prepareAndCreateFunction: (node, compiler, imports) => {
               const oldSrc = compiler.source;
               
               compiler.descendStack(node.funcCode, new (imports.Frame)(false));
@@ -1960,12 +1968,12 @@
 
               const generatedJS = `(yield* (
                 runtime.ext_moreTypesPlus.enterFunctionDef(),
-                function*(returnThis) {
+                function*() {
                   try {  ${prepareSrc}  }
                   finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
                   return new (runtime.ext_moreTypesPlus.Function)(
                     (function*() {
-                      ${funcCodeSrc};
+                      ${funcCodeSrc}
                       return runtime.ext_moreTypesPlus.Nothing;
                     }), 
                     ${functionDefLocal}
@@ -1991,36 +1999,40 @@
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
             },
-            callFunctionOutput: (node, compiler, imports) => {
-              const funcLocal = compiler.localVariables.next();
-              const func      = compiler.descendInput(node.func);
+            callFunction: (node, compiler, imports) => {
+              const funcLocal         = compiler.localVariables.next();
+              const functionCallLocal = compiler.localVariables.next();
+              const func              = compiler.descendInput(node.func);
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
-                ${funcLocal} = ${func.asUnknown()},
-                (runtime.ext_moreTypesPlus.isFunction(${funcLocal})) ?
-                    ${funcLocal}.call() :
-                    runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")
+                (function* (){
+                  ${funcLocal} = ${func.asUnknown()};
+                  if (!runtime.ext_moreTypesPlus.isFunctionOrMethod(${funcLocal})) throw "Attempted to call non-function.";
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.getFunctionDef());
+                  ${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();
+                  runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
+                  try {  return yield* ${funcLocal}.call();  }
+                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
+                })()
               ))`;
               console.log(generatedJS);
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
-            prepareAndCallFunctionOutput: (node, compiler, imports) => {
+            prepareAndCallFunction: (node, compiler, imports) => {
               const funcLocal         = compiler.localVariables.next();
               const functionCallLocal = compiler.localVariables.next();
-              const func = compiler.descendInput(node.func);            
-              const oldSrc = compiler.source;
+              const func              = compiler.descendInput(node.func);            
+              const oldSrc            = compiler.source;
               compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
               const prepareSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
+              compiler.source  = oldSrc;
               
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
               const generatedJS = `(yield* (
-                ${funcLocal} = ${func.asUnknown()},
-                (jsValues.isFunction(${funcLocal})) ?
-                  (function* (){})() : // Do nothing wait for later
-                  runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function."),
                 (function* (){
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.functionDef);
+                  ${funcLocal} = ${func.asUnknown()};
+                  if (!runtime.ext_moreTypesPlus.isFunctionOrMethod(${funcLocal})) throw "Attempted to call non-function.";
+                  runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.getFunctionDef());
                   try {  ${prepareSrc}  }
                   finally {  ${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                   runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
@@ -2198,7 +2210,7 @@
             nothingValue: (node, compiler, imports) => {
               return new (imports.TypedInput)(`runtime.ext_moreTypesPlus.Nothing`, imports.TYPE_UNKNOWN);
             },
-            anonymousClassInit: (node, compiler, imports) => {
+            createClassInit: (node, compiler, imports) => {
               const name     = compiler.descendInput(node.name);
               const initFunc = compiler.descendInput(node.init);
               const objLocal = compiler.localVariables.next();
@@ -2215,7 +2227,7 @@
               })())`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
-            anonymousClassExtends: (node, compiler, imports) => {
+            createClassExtends: (node, compiler, imports) => {
               const name       = compiler.descendInput(node.name);
               const superClass = compiler.descendInput(node.superClass);
               
@@ -2226,7 +2238,7 @@
                 }))`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
-            anonymousClassExtendsInit: (node, compiler, imports) => {
+            createClassExtendsInit: (node, compiler, imports) => {
               const name       = compiler.descendInput(node.name);
               const superClass = compiler.descendInput(node.superClass);
               const initFunc   = compiler.descendInput(node.init);
@@ -2254,43 +2266,21 @@
               // runtime.ext_moreTypesPlus.appendMethod(obj, name, method)
               compiler.source += `runtime.ext_moreTypesPlus.appendMethod(${obj}, ${name}, ${method});\n`;
             },
-            callMethodOutput: (node, compiler, imports) => {
-              // getObjMethod(obj, name).callWithThis(obj, name)
-              const obj  = compiler.descendInput(node.obj).asUnknown();
-              const name = compiler.descendInput(node.name).asString();
-              const objLocal    = compiler.localVariables.next();
-              const nameLocal   = compiler.localVariables.next();
-              return new (imports.TypedInput)(`(yield* (
-                ${objLocal} = ${obj},
-                ${nameLocal} = ${name},
-                runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}).callWithThis(${objLocal}, ${nameLocal})
-              ))`, imports.TYPE_UNKNOWN);
-            },
-            prepareAndCallMethodOutput: (node, compiler, imports) => {
-              const obj  = compiler.descendInput(node.obj).asUnknown();
-              const name = compiler.descendInput(node.name).asString();
-              const callLocal   = compiler.localVariables.next();
-              const objLocal    = compiler.localVariables.next();
-              const nameLocal   = compiler.localVariables.next();
-              const methodLocal = compiler.localVariables.next();
-
-              const oldSrc = compiler.source;
-              compiler.descendStack(node.prepareCode, new (imports.Frame)(false));
-              const prepareSrc = compiler.source.substring(oldSrc.length);
-              compiler.source = oldSrc;
-              const generatedJS =`(yield* (
-                ${objLocal} = ${obj},
-                ${nameLocal} = ${name},
-                ${methodLocal} = runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}),
-                (function* () {
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${methodLocal}.functionDef);
-                  try {  ${prepareSrc}  }
-                  finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                  try {  yield* ${methodLocal}.callWithThis(${objLocal}, ${nameLocal});  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ))`;
+            getMethod: (node, compiler, imports) => {
+              // getObjMethod(obj, name)
+              const obj       = compiler.descendInput(node.obj);
+              const name      = compiler.descendInput(node.name);
+              const objLocal  = compiler.localVariables.next();
+              const nameLocal = compiler.localVariables.next();
+              const generatedJS = `(yield* (function* () {
+                ${objLocal} = ${obj.asUnknown()};
+                ${nameLocal} = ${name.asString()};
+                return new runtime.ext_moreTypesPlus.Method(
+                  runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}),
+                  ${objLocal}, ${nameLocal}
+                );
+              })())`
+              const generatedJS2 = `new runtime.ext_moreTypesPlus.Method(runtime.ext_moreTypePlus.getObjMethod(${obj}, ${name}))`
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             construct: (node, compiler, imports) => {
@@ -2309,7 +2299,7 @@
               
               const generatedJS = `(yield* (function* () {
                 ${classLocal} = ${classInput.asUnknown()};
-                runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").functionDef);  
+                runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").getFunctionDef());  
                 try {  ${prepareSrc}  }
                 finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
                 runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
@@ -2332,7 +2322,7 @@
               console.log("compiler", compiler);
               const generatedJS = `new (runtime.ext_moreTypesPlus.GeneratorFunction)(
                 (function*(){
-                  ${stackSrc};
+                  ${stackSrc}
                   return runtime.ext_moreTypesPlus.Nothing;
                 }), null
               )`;
@@ -2353,12 +2343,12 @@
 
               const generatedJS = `(yield* (
                 runtime.ext_moreTypesPlus.enterFunctionDef(),
-                function*(returnThis) {
+                function*() {
                   try {  ${prepareSrc}  }
                   finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
                   return new (runtime.ext_moreTypesPlus.GeneratorFunction)(
                     (function*(){
-                      ${stackSrc};
+                      ${funcCodeSrc}
                       return runtime.ext_moreTypesPlus.Nothing;
                     }), ${functionDefLocal}
                   );
