@@ -48,6 +48,7 @@
         let jsValues = this
         jsValues.runtime = runtime;
         jsValues.throwErr = function* (msg) {
+          console.log("throwErr", msg);
           throw msg;
         }
         jsValues._GETVAR = function (varName) {
@@ -946,7 +947,9 @@
           }
         }
         jsValues.isObject = (value) => {
-          return (jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Map");
+          const rv = (jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Map");
+          console.log("isObject", value, rv);
+          return rv
         }
         jsValues.isFunctionOrMethod = (value) => {
           return (jsValues.typeof(value) === "Function" || jsValues.typeof(value) === "Method" || jsValues.typeof(value) === "GeneratorFunction");
@@ -2253,11 +2256,12 @@
                 );
                 runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
                 return ${objLocal};
-              })())`
+              })())`;
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             this: (node, compiler, imports) => {
-              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.isObject(this) ? this : runtime.ext_moreTypesPlus.throwErr("Cannot access this outside of class constructor and methods"))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(`runtime.ext_moreTypesPlus.isObject(this) ? this : yield* runtime.ext_moreTypesPlus.throwErr("Cannot access this outside of class constructor and methods")`
+, imports.TYPE_UNKNOWN);
             },
             appendMethod: (node, compiler, imports) => {
               const method = compiler.descendInput(node.method).asUnknown();

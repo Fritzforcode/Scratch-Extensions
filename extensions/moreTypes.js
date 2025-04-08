@@ -484,7 +484,7 @@
         jsValues.inheritsFrom = (value, otherClass) => {
           return value.class.prototype instanceof (jsValues.typeof(value) === "Class" ? value.class : value)
         }
-        jsValues.constructFrom = function* (value) { // do (yield* runtime.ext_moreTypesPlus.constructFrom(someClass));
+        jsValues.constructFrom = function* (value) { // do (yield* runtime.ext_vgscompiledvalues.constructFrom(someClass));
           if (jsValues.canConstruct(value)) {
             const instance = new (value.class)();
             return (yield* instance.init());
@@ -1179,19 +1179,19 @@
               let object;
               switch (node.type) {
                 case "Object":
-                  object = `new ((runtime.ext_moreTypesPlus).Object)()`
+                  object = `new ((runtime.ext_vgscompiledvalues).Object)()`
                   break;
                 case "Array":
-                  object = `new ((runtime.ext_moreTypesPlus).Array)()`
+                  object = `new ((runtime.ext_vgscompiledvalues).Array)()`
                   break;
                 case "Set":
-                  object = `new ((runtime.ext_moreTypesPlus).Set)()`
+                  object = `new ((runtime.ext_vgscompiledvalues).Set)()`
                   break;
                 case "Map":
-                  object = `new ((runtime.ext_moreTypesPlus).Map)()`
+                  object = `new ((runtime.ext_vgscompiledvalues).Map)()`
                   break;
                 default:
-                  object = `new ((runtime.ext_moreTypesPlus).Object)()`
+                  object = `new ((runtime.ext_vgscompiledvalues).Object)()`
                   break;
               }
               return new (imports.TypedInput)(object, imports.TYPE_UNKNOWN)
@@ -1202,7 +1202,7 @@
                     compiler.descendStack(node.stack, new (imports.Frame)(false));
                     const stackSrc = compiler.source.substring(oldSrc.length);
                     compiler.source = oldSrc;
-                    return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus.Function)(target, (function*(){${stackSrc};\nreturn runtime.ext_moreTypesPlus.Nothing;}))`, imports.TYPE_UNKNOWN)
+                    return new (imports.TypedInput)(`new (runtime.ext_vgscompiledvalues.Function)(target, (function*(){${stackSrc};\nreturn runtime.ext_vgscompiledvalues.Nothing;}))`, imports.TYPE_UNKNOWN)
             },
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`
@@ -1210,16 +1210,16 @@
             callFunction: (node, compiler, imports) => {
               const local = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
-              const getFunc = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local}")).func`;
+              const getFunc = `(runtime.ext_vgscompiledvalues.getStore(globalState.thread, "${local}")).func`;
               if (!compiler.script.yields === true) throw "Something happened in the More Types extension"
-              compiler.source+=`(yield* (${getFunc} = ${func.asUnknown()},\n  (runtime.ext_moreTypesPlus.typeof(${getFunc}) === "Function") ?\n  \ \ ${getFunc}.call() :\n  \ \ runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")));`
+              compiler.source+=`(yield* (${getFunc} = ${func.asUnknown()},\n  (runtime.ext_vgscompiledvalues.typeof(${getFunc}) === "Function") ?\n  \ \ ${getFunc}.call() :\n  \ \ runtime.ext_vgscompiledvalues.throwErr("Attempted to call non-function.")));`
             },
             callFunctionOutput: (node, compiler, imports) => {
               const local = compiler.localVariables.next();
               const func = compiler.descendInput(node.func);
-              const getFunc = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local}")).func`;
+              const getFunc = `(runtime.ext_vgscompiledvalues.getStore(globalState.thread, "${local}")).func`;
               if (!compiler.script.yields === true) throw "Something happened in the More Types extension"
-              return new (imports.TypedInput)(`(yield* (${getFunc} = ${func.asUnknown()},\n  (runtime.ext_moreTypesPlus.typeof(${getFunc}) === "Function") ?\n  \ \ ${getFunc}.call() :\n  \ \ runtime.ext_moreTypesPlus.throwErr("Attempted to call non-function.")))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(`(yield* (${getFunc} = ${func.asUnknown()},\n  (runtime.ext_vgscompiledvalues.typeof(${getFunc}) === "Function") ?\n  \ \ ${getFunc}.call() :\n  \ \ runtime.ext_vgscompiledvalues.throwErr("Attempted to call non-function.")))`, imports.TYPE_UNKNOWN)
             },
             setVar: (node, compiler, imports) => {
               const variable = compiler.descendVariable(node.variable);
@@ -1238,8 +1238,8 @@
               const local1 = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).get === "function")\n    ? ${getObj}.get(${key.asUnknown()})\n    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_UNKNOWN)
+              const getObj = `(runtime.ext_vgscompiledvalues.getStore(globalState.thread, "${local1}")).obj`
+              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).get === "function")\n    ? ${getObj}.get(${key.asUnknown()})\n    : runtime.ext_vgscompiledvalues.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_UNKNOWN)
             },
             setIndex: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key);
@@ -1247,7 +1247,7 @@
               const obj = compiler.descendInput(node.object);
               
               const local1 = compiler.localVariables.next();
-              compiler.source += `const ${local1} = ${obj.asUnknown()}\n;((typeof (${local1} ? ${local1} : \{\}).set === "function")\n  ? ${local1}.set(${key.asUnknown()}, ${value.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot set properties of \${${local1}}\`));\n`
+              compiler.source += `const ${local1} = ${obj.asUnknown()}\n;((typeof (${local1} ? ${local1} : \{\}).set === "function")\n  ? ${local1}.set(${key.asUnknown()}, ${value.asUnknown()})\n  : runtime.ext_vgscompiledvalues.throwErr(\`Cannot set properties of \${${local1}}\`));\n`
             },
             iterateObject: (node, compiler, imports) => {
               const keyVar = compiler.descendVariable(node.key);
@@ -1257,7 +1257,7 @@
               const objVar = compiler.localVariables.next();
               const iterable = compiler.localVariables.next();
               const keyValue = compiler.localVariables.next();
-              compiler.source += `const ${objVar} = ${obj.asUnknown()};\nconst ${iterable} = runtime.ext_moreTypesPlus.toIterable(${objVar});\nfor (const ${keyValue} of ${iterable}) {${keyVar.source}=${keyValue}[0];${valueVar.source}=${keyValue}[1];`
+              compiler.source += `const ${objVar} = ${obj.asUnknown()};\nconst ${iterable} = runtime.ext_vgscompiledvalues.toIterable(${objVar});\nfor (const ${keyValue} of ${iterable}) {${keyVar.source}=${keyValue}[0];${valueVar.source}=${keyValue}[1];`
               // time to add the substack
               compiler.descendStack(node.stack, new (imports.Frame)(true, "vgscompiledvalues.iterateObject"));
               compiler.yieldLoop();
@@ -1271,7 +1271,7 @@
               const objVar = compiler.localVariables.next();
               const iterable = compiler.localVariables.next();
               const keyValue = compiler.localVariables.next();
-              compiler.source += `const ${objVar} = ${obj.asUnknown()};\nconst ${iterable} = runtime.ext_moreTypesPlus.toIterable(${objVar});\nfor (const ${keyValue} of ${iterable}) {tempVars[${keyVar.asString()}]=${keyValue}[0];tempVars[${valueVar.asString()}]=${keyValue}[1];`
+              compiler.source += `const ${objVar} = ${obj.asUnknown()};\nconst ${iterable} = runtime.ext_vgscompiledvalues.toIterable(${objVar});\nfor (const ${keyValue} of ${iterable}) {tempVars[${keyVar.asString()}]=${keyValue}[0];tempVars[${valueVar.asString()}]=${keyValue}[1];`
               // time to add the substack
               compiler.descendStack(node.stack, new (imports.Frame)(true, "vgscompiledvalues.iterateObject"));
               compiler.yieldLoop();
@@ -1290,7 +1290,7 @@
               
               const local1 = compiler.localVariables.next();
               
-              compiler.source += `const ${local1} = ${obj.asUnknown()};\n(typeof (${local1} ? ${local1} : {}).delete === "function")\n  ? ${local1}.delete(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot delete properties of \${${local1}}\`)\n`
+              compiler.source += `const ${local1} = ${obj.asUnknown()};\n(typeof (${local1} ? ${local1} : {}).delete === "function")\n  ? ${local1}.delete(${key.asUnknown()})\n  : runtime.ext_vgscompiledvalues.throwErr(\`Cannot delete properties of \${${local1}}\`)\n`
             },
             addItem: (node, compiler, imports) => {
               const value = compiler.descendInput(node.value);
@@ -1298,7 +1298,7 @@
               
               const local1 = compiler.localVariables.next();
               
-              compiler.source += `const ${local1} = ${obj.asUnknown()};\n(typeof (${local1} ? ${local1} : {}).add === "function")\n  ? ${local1}.add(${value.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot add to the end of \${${local1}}\`)\n`
+              compiler.source += `const ${local1} = ${obj.asUnknown()};\n(typeof (${local1} ? ${local1} : {}).add === "function")\n  ? ${local1}.add(${value.asUnknown()})\n  : runtime.ext_vgscompiledvalues.throwErr(\`Cannot add to the end of \${${local1}}\`)\n`
             },
             keyExists: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key);
@@ -1307,8 +1307,8 @@
               const local1 = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).has === "function")\n  ? ${getObj}.has(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_BOOLEAN)
+              const getObj = `(runtime.ext_vgscompiledvalues.getStore(globalState.thread, "${local1}")).obj`
+              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).has === "function")\n  ? ${getObj}.has(${key.asUnknown()})\n  : runtime.ext_vgscompiledvalues.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_BOOLEAN)
             },
             sizeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
@@ -1316,25 +1316,25 @@
               const local1 = compiler.localVariables.next();
               // i forgor that we cannot use const in an expression.
               // so i had to implement a store system.
-              const getObj = `(runtime.ext_moreTypesPlus.getStore(globalState.thread, "${local1}")).obj`
-              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).size === "number")\n  ? ${getObj}.size\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_NUMBER)
+              const getObj = `(runtime.ext_vgscompiledvalues.getStore(globalState.thread, "${local1}")).obj`
+              return new (imports.TypedInput)(`((${getObj} = ${obj.asUnknown()}),(typeof (${getObj} ? ${getObj} : \{\}).size === "number")\n  ? ${getObj}.size\n  : runtime.ext_vgscompiledvalues.throwErr(\`Cannot read properties of \${${getObj}}\`))`, imports.TYPE_NUMBER)
             },
             typeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
-              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.typeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER)
+              return new (imports.TypedInput)(`(runtime.ext_vgscompiledvalues.typeof(${obj.asUnknown()}))`, imports.TYPE_NUMBER)
             },
             createSymbol: (node, compiler, imports) => {
-              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus).Symbol()`, imports.TYPE_UNKNOWN);
+              return new (imports.TypedInput)(`new (runtime.ext_vgscompiledvalues).Symbol()`, imports.TYPE_UNKNOWN);
             },
             nothingValue: (node, compiler, imports) => {
-              return new (imports.TypedInput)(`runtime.ext_moreTypesPlus.Nothing`, imports.TYPE_UNKNOWN);
+              return new (imports.TypedInput)(`runtime.ext_vgscompiledvalues.Nothing`, imports.TYPE_UNKNOWN);
             },
             anonymousClass: (node, compiler, imports) => {
               const oldSrc = compiler.source;
               compiler.descendStack(node.stack, new(imports.Frame)(false));
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
-              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {\n
+              return new (imports.TypedInput)(`new (runtime.ext_vgscompiledvalues.Class)(class MORETYPESCLASS extends (runtime.ext_vgscompiledvalues.getClassToExtend("Object")) {\n
                 constructor() {super()}\n
                 *init(isSuper) {\n
                   try {\n
@@ -1351,10 +1351,10 @@
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               const classToExtend = compiler.descendInput(node.extends).asUnknown();
-              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus.Class)(class MORETYPESCLASS extends (runtime.ext_moreTypesPlus.getClassToExtend(${classToExtend})) {\n
+              return new (imports.TypedInput)(`new (runtime.ext_vgscompiledvalues.Class)(class MORETYPESCLASS extends (runtime.ext_vgscompiledvalues.getClassToExtend(${classToExtend})) {\n
                 constructor() {super()}\n
                 *init(isSuper) {\n
-                  if (!isSuper) (yield* runtime.ext_moreTypesPlus.trySuper(this));
+                  if (!isSuper) (yield* runtime.ext_vgscompiledvalues.trySuper(this));
                   try {\n
                     ${stackSrc};\n
                   } finally {\n
@@ -1364,37 +1364,37 @@
               })`, imports.TYPE_UNKNOWN)
             },
             this: (node, compiler, imports) => {
-              return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.isObject(this) ? this : runtime.ext_moreTypesPlus.throwErr("Cannot access this outside of class constructor and methods"))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(`(runtime.ext_vgscompiledvalues.isObject(this) ? this : runtime.ext_vgscompiledvalues.throwErr("Cannot access this outside of class constructor and methods"))`, imports.TYPE_UNKNOWN)
             },
             appendMethod: (node, compiler, imports) => {
               const method = compiler.descendInput(node.method).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
               const obj = compiler.descendInput(node.obj).asUnknown();
-              // runtime.ext_moreTypesPlus.appendMethod(obj, name, method)
-              compiler.source += `runtime.ext_moreTypesPlus.appendMethod(${obj}, ${name}, ${method});\n`;
+              // runtime.ext_vgscompiledvalues.appendMethod(obj, name, method)
+              compiler.source += `runtime.ext_vgscompiledvalues.appendMethod(${obj}, ${name}, ${method});\n`;
             },
             callMethod: (node, compiler, imports) => {
               // executeMethod(obj, name)
               const obj = compiler.descendInput(node.obj).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
               
-              compiler.source += `(yield* (runtime.ext_moreTypesPlus.executeMethod(${obj}, ${name})));`
+              compiler.source += `(yield* (runtime.ext_vgscompiledvalues.executeMethod(${obj}, ${name})));`
             },
             callMethodOutput: (node, compiler, imports) => {
               // executeMethod(obj, name)
               const obj = compiler.descendInput(node.obj).asUnknown();
               const name = compiler.descendInput(node.name).asUnknown();
               
-              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.executeMethod(${obj}, ${name})))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(`(yield* (runtime.ext_vgscompiledvalues.executeMethod(${obj}, ${name})))`, imports.TYPE_UNKNOWN)
             },
             construct: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
-              return new (imports.TypedInput)(`(yield* (runtime.ext_moreTypesPlus.constructFrom(${constructor})))`, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(`(yield* (runtime.ext_vgscompiledvalues.constructFrom(${constructor})))`, imports.TYPE_UNKNOWN)
             },
             instanceof: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
               const obj = compiler.descendInput(node.obj).asUnknown();
-              return new (imports.TypedInput)(`(${obj} instanceof runtime.ext_moreTypesPlus.getClassToExtend(${constructor}, true))`, imports.TYPE_BOOLEAN)
+              return new (imports.TypedInput)(`(${obj} instanceof runtime.ext_vgscompiledvalues.getClassToExtend(${constructor}, true))`, imports.TYPE_BOOLEAN)
             }
           }
         }
