@@ -378,7 +378,13 @@
             return (delete this.__values[key]);
           }
           get toString() {
-            return () => "<Object>";
+            return () => {
+              const items  = Object.entries(this.__values).map(
+                (item, index) => (jsValues.repr(item[0]) + ": ", jsValues.repr(item[1]))
+              );
+              const inner = (items.length <= 10) ? items.join(", ") : (items.slice(0, 5).join(", ") + "..." + items.slice(-5).join(", "))
+              return `<Object(${items.length}){${inner}}>`;
+            };
           }
           set toString(e) {
             throw "Cannot overwrite the toString method of an object.";
@@ -394,81 +400,6 @@
           }
         }
         jsValues.Object.prototype.type = "PlainObject";
-        /*jsValues.OldArray = class OldArray{
-          constructor(arr) {
-            this.__values = arr || [];
-          }
-          get(num) {
-            let key = Number(num);
-            if (key < 0) {
-              key = this.__values.length + key;
-            }
-            if (num === "length") {
-              return this.__values.length;
-            }
-            if (typeof num !== "number" && typeof num !== "boolean" && (typeof num !== "string" || Number.isNaN(key))) {
-              throw "Attempted to index <Array> with a key that cannot be parsed as a number and is not length.";
-            }
-            let value = this.__values[key];
-            if (value === undefined) {
-              return jsValues.Nothing;
-            }
-            return value;
-          }
-          set(num, value) {
-            let key = Number(num);
-            if (key < 0) {
-              key = this.__values.length + key;
-            }
-            if (num === "length") {
-              return this.setLength(Number(value) || this.__values.length);
-            }
-            if (typeof num !== "number" && typeof num !== "boolean" && (typeof num !== "string" || Number.isNaN(key))) {
-              throw "Attempted to set property of <Array> with a key that cannot be parsed as a number and is not length.";
-            }
-            if (key > 12e6) {
-              throw "The maximum index for an array is 12 million. ";
-            }
-            if (jsValues.typeof(value) === "unknown") {
-              throw `Attempted to set property of <Array> with unknown value: ${value}`;
-            }
-            if (key > this.__values.length) {
-              throw "Attempted setting an item index bigger then length."
-            }
-            return this.__values[key] = value;
-          }
-          delete(num) {
-            return (delete this.__values[num]);
-          }
-          add(value) {
-            return this.__values.push(value);
-          }
-          has(num) {
-            return this.get(num) !== jsValues.Nothing;
-          }
-          setLength(num) {
-            let len = this.__values.length;
-            if (num === len) return num;
-            if (num < len) return this.__values.length = num;
-            // It must be larger
-            for (let i = len; i < num; i++) {
-              this.__values.push(jsValues.Nothing);
-            }
-            return num;
-          }
-          get size() {
-            return this.__values.length;
-          }
-          get toString() {
-            return () => "<Array>";
-          }
-          set toString(e) {
-            throw "Cannot overwrite the toString method of an object.";
-          }
-          toJSON() {
-            return "Arrays do not save.";
-          }
-        };*/
         jsValues.Array = class Array {
           constructor(arr) {
             this.__values = arr || [];
@@ -519,12 +450,7 @@
           get toString() {
             return () => {
               const items = this.__values.map(jsValues.repr);
-              let inner = null;
-              if (items.length <= 10) {
-                  inner = items.join(", ");
-              } else {
-                  inner = items.slice(0, 10).join(", ") + "...";
-              }
+              const inner = (items.length <= 10) ? items.join(", ") : (items.slice(0, 5).join(", ") + "..." + items.slice(-5).join(", "))
               return `<Array(${items.length})[${inner}]>`;
             };
           }
@@ -564,7 +490,11 @@
             return this.__values.size;
           }
           get toString() {
-            return () => "<Set>"
+            return () => {
+              const items = Array.from(this.__values).map(jsValues.repr);
+              const inner = (items.length <= 10) ? items.join(", ") : (items.slice(0, 5).join(", ") + "..." + items.slice(-5).join(", "))
+              return `<Set(${items.length})[${inner}]>`;
+            };
           }
           set toString(e) {
             throw "Cannot overwrite the toString method of an object."
@@ -597,7 +527,13 @@
             return this.__values.size;
           }
           get toString() {
-            return () => "<Map>";
+            return () => {
+              const items  = Object.entries(this.__values).map(
+                (item, index) => (jsValues.repr(item[0]) + ": ", jsValues.repr(item[1]))
+              );
+              const inner = (items.length <= 10) ? items.join(", ") : (items.slice(0, 5).join(", ") + "..." + items.slice(-5).join(", "))
+              return `<Object(${items.length}){${inner}}>`;
+            };
           }
           set toString(e) {
             throw "Cannot overwrite the toString method of an object.";
