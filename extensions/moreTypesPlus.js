@@ -48,7 +48,6 @@
         let jsValues = this
         jsValues.runtime = runtime;
         jsValues.throwErr = function* (msg) {
-          console.log("throwErr", msg);
           throw msg;
         }
         jsValues._GETVAR = function (varName) {
@@ -328,10 +327,8 @@
         jsValues.enterScope = function (args) {
           if (args === null) args = {};
           jsValues.functionScopeLayers.push(new jsValues.TempScope(args));
-          console.log("after enter", jsValues.functionScopeLayers);
         }
         jsValues.exitScope = function () {
-          console.log("before exit", jsValues.functionScopeLayers);
           return jsValues.functionScopeLayers.pop();
         }
         jsValues.getFunctionArgument = function (name) {
@@ -561,7 +558,6 @@
           constructor(func, functionDef) {
             this.func         = func;
             this.functionDef  = functionDef;
-            console.log("init", this);
           }
           getFunctionDef() {
             return this.functionDef;
@@ -883,12 +879,15 @@
           }
         }
         jsValues.isObject = (value) => {
-          const rv = (jsValues.typeof(value) === "Object" || jsValues.typeof(value) === "Array" || jsValues.typeof(value) === "Set" || jsValues.typeof(value) === "Map");
-          console.log("isObject", value, rv);
-          return rv
+          return (jsValues.typeof(value) === "Object" 
+               || jsValues.typeof(value) === "Array" 
+               || jsValues.typeof(value) === "Set" 
+               || jsValues.typeof(value) === "Map");
         }
         jsValues.isFunctionOrMethod = (value) => {
-          return (jsValues.typeof(value) === "Function" || jsValues.typeof(value) === "Method" || jsValues.typeof(value) === "GeneratorFunction");
+          return (jsValues.typeof(value) === "Function" 
+               || jsValues.typeof(value) === "Method" 
+               || jsValues.typeof(value) === "GeneratorFunction");
         }
         /*jsValues.trySuper = function* (thisVal) {
           const constructor = thisVal.constructor;
@@ -1632,6 +1631,9 @@
         }
         throw "Please turn on compiler. " // If its not monitor
       }
+      generateYieldGen(innerCode) {
+        return `(yield* (function*() {${innerCode}})())`
+      }
       getCompileInfo() {
         return {
           ir: {
@@ -1848,10 +1850,8 @@
               compiler.source += generatedJS;
             },
             log: (node, compiler, imports) => {
-              let x = compiler.descendInput(node.contents)
-              compiler.source += `console.log("MORE TYPES LOG: " ,${x.asUnknown()});\n`
-              //console.log(x)
-              //console.log(compiler)
+              let contents = compiler.descendInput(node.contents)
+              compiler.source += `console.log("MORE TYPES LOG: " ,${contents.asUnknown()});\n`
             },
             ignoreReturnValue: (node, compiler, imports) => {
               const value = compiler.descendInput(node.value);
@@ -1905,20 +1905,30 @@
               
               const functionDefLocal = compiler.localVariables.next();
 
-              const generatedJS = `(yield* (
-                runtime.ext_moreTypesPlus.enterFunctionDef(),
-                function*() {
-                  try {  ${prepareSrc}  }
-                  finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
-                  return new (runtime.ext_moreTypesPlus.Function)(
-                    (function*() {
-                      ${funcCodeSrc}
-                      return runtime.ext_moreTypesPlus.Nothing;
-                    }), 
-                    ${functionDefLocal}
-                  );
-                }()
-              ))`
+              const generatedJS2 = `(yield* (function*() {
+                runtime.ext_moreTypesPlus.enterFunctionDef();
+                try {  ${prepareSrc}  }
+                finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                return new (runtime.ext_moreTypesPlus.Function)(
+                  (function*() {
+                    ${funcCodeSrc}
+                    return runtime.ext_moreTypesPlus.Nothing;
+                  }), 
+                  ${functionDefLocal}
+                );
+              })())`;
+              const generatedJS = jsValues.generateYieldGen(
+                `runtime.ext_moreTypesPlus.enterFunctionDef();
+                try {  ${prepareSrc}  }
+                finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+                return new (runtime.ext_moreTypesPlus.Function)(
+                  (function*() {
+                    ${funcCodeSrc}
+                    return runtime.ext_moreTypesPlus.Nothing;
+                  }), 
+                  ${functionDefLocal}
+                );`
+              );
               return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
             },
             defineArgument: (node, compiler, imports) => {
@@ -1995,8 +2005,6 @@
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              // i forgor that we cannot use const in an expression.
-              // so i had to implement a store system.
               const generatedJS = `(
                 ${objLocal} = ${obj.asUnknown()},
                 (
@@ -2074,7 +2082,7 @@
               compiler.source += `async return;\n`
             },
             deleteIndex: (node, compiler, imports) => {
-              const key = compiler.descendInput(node.key);
+              const key = compiler.descendInput(node.key    );
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
@@ -2089,8 +2097,8 @@
               compiler.source += generatedJS;
             },
             addItem: (node, compiler, imports) => {
-              const value = compiler.descendInput(node.value);
-              const obj = compiler.descendInput(node.object);
+              const value = compiler.descendInput(node.value );
+              const obj   = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
               const generatedJS = `
@@ -2104,7 +2112,7 @@
               compiler.source += generatedJS;
             },
             keyExists: (node, compiler, imports) => {
-              const key = compiler.descendInput(node.key);
+              const key = compiler.descendInput(node.key   );
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
