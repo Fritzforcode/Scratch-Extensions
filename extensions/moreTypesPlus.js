@@ -138,34 +138,34 @@
           if (value === jsValues.Nothing) {
             return "nothing"; // its basically just undefined.
           }
-          if (value instanceof jsValues.Object) {
+          if (value instanceof jsValues.MTPObject) {
             return "Object";
           }
-          if (value instanceof jsValues.Array) {
+          if (value instanceof jsValues.MTPArray) {
             return "Array";
           }
-          if (value instanceof jsValues.Set) {
+          if (value instanceof jsValues.MTPSet) {
             return "Set"
           }
-          if (value instanceof jsValues.Map) {
+          if (value instanceof jsValues.MTPMap) {
             return "Map"
           }
-          if (value instanceof jsValues.Symbol) {
+          if (value instanceof jsValues.MTPSymbol) {
             return "Symbol"
           }
-          if (value instanceof jsValues.Function) {
+          if (value instanceof jsValues.MTPFunction) {
             return "Function"
           }
           if (value instanceof jsValues.Method) {
             return "Method"
           }
-          if (value instanceof jsValues.GeneratorFunction) {
+          if (value instanceof jsValues.MTPGeneratorFunction) {
             return "GeneratorFunction"
           }
           if (value instanceof jsValues.Generator) {
             return "Generator"
           }
-          if (value instanceof jsValues.Class) {
+          if (value instanceof jsValues.MTPClass) {
             return "Class"
           }
           return "unknown"
@@ -178,13 +178,13 @@
         }
         jsValues.clone = function CLONE(value) {
           if (jsValues.typeof(value) === "Object") {
-            return new (jsValues.Object)(structuredClone(value.__values))
+            return new (jsValues.MTPObject)(structuredClone(value.__values))
           } else if (jsValues.typeof(value) === "Array") {
-            return new (jsValues.Array)(structuredClone(value.__values))
+            return new (jsValues.MTPArray)(structuredClone(value.__values))
           } else if (jsValues.typeof(value) === "Set") {
-            return new (jsValues.Set)(structuredClone(value.__values))
+            return new (jsValues.MTPSet)(structuredClone(value.__values))
           } else if (jsValues.typeof(value) === "Map") {
-            return new (jsValues.Map)(structuredClone(value.__values))
+            return new (jsValues.MTPMap)(structuredClone(value.__values))
           } else if (jsValues.typeof(value) === "RegularExpression") {
             return new (jsValues.RegExp)(structuredClone(value.__values))
           } else if (jsValues.typeof(value) === "Function") {
@@ -290,11 +290,14 @@
           }
           return jsValues.functionCallLayers.pop();
         }
+        jsValues.getHighestFunctionCall = function () {
+          return jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
+        }
         jsValues.setNextFunctionCallArg = function (value) {
           if (jsValues.functionCallLayers.length === 0) {
             throw '"set next call argument" cannot be used outside a function call block".';
           }
-          const functionCall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
+          const functionCall = jsValues.getHighestFunctionCall();
           const argIndex = Object.keys(functionCall.setArgValues).length;
           if (argIndex >= functionCall.functionDef.args.length) {
             throw "Attempted setting more arguments then were defined.";
@@ -308,10 +311,7 @@
           if (jsValues.functionCallLayers.length === 0) {
             throw '"set call argument by name" cannot be used outside a function call block".';
           }
-          const functionCall = jsValues.functionCallLayers[jsValues.functionCallLayers.length-1];
-          if (!functionCall.functionDef.hasArg(name)) {
-            throw "Attempted setting an argument, which was never defined.";
-          }
+          const functionCall = jsValues.getHighestFunctionCall();
           if (functionCall.setArgValues.hasOwnProperty(name)) {
             throw "Attempted setting an argument twice.";
           }
@@ -320,30 +320,39 @@
         }
 
         jsValues.TempScope = class TempScope {
-          constructor(args) {
-            this.args = args;
+          constructor(vars) {
+            this.vars = vars;
           }
         }
-        jsValues.enterScope = function (args) {
-          if (args === null) args = {};
-          jsValues.functionScopeLayers.push(new jsValues.TempScope(args));
+        jsValues.enterScope = function (vars) {
+          if (vars === null) vars = {};
+          jsValues.functionScopeLayers.push(new jsValues.TempScope(vars));
         }
         jsValues.exitScope = function () {
           return jsValues.functionScopeLayers.pop();
         }
-        jsValues.getFunctionArgument = function (name) {
-          if (jsValues.functionScopeLayers.length === 0) {
-            throw '"get argument" cannot be used outside a function or class definition block, which has a "prepare" substack.';
-          }
-          const scope = jsValues.functionScopeLayers[jsValues.functionScopeLayers.length-1];
-          if (!scope.args.hasOwnProperty(name)) {
-            throw `Argument ${name} was never defined.`;
-          }
-          return scope.args[name];
+        jsValues.getHighestScope = function () {
+          return jsValues.functionScopeLayers[jsValues.functionScopeLayers.length-1];
         }
-        
+        jsValues.getFunctionVar = function (name) {
+          if (jsValues.functionScopeLayers.length === 0) {
+            throw '"get function var" cannot be used outside a function or class definition block.';
+          }
+          const scope = jsValues.getHighestScope();
+          if (!scope.vars.hasOwnProperty(name)) {
+            throw `Argument ${name} was never set.`;
+          }
+          return scope.vars[name];
+        }
+        jsValues.setFunctionVar = function (name, value) {
+          if (jsValues.functionScopeLayers.length === 0) {
+            throw '"set function var" cannot be used outside a function or class definition block.';
+          }
+          const scope = jsValues.getHighestScope();
+          scope.vars[name] = value;
+        }
 
-        jsValues.Object = class PlainObject {
+        jsValues.MTPObject = class MTPObject {
           constructor(obj) {
             this.__values = obj || {};
           }
@@ -374,11 +383,18 @@
           delete(key) {
             return (delete this.__values[key]);
           }
+          *getKeys() {
+            return new jsValues.MTPArray(Object.keys(this.__values));
+          }
+          *getValues() {
+            return new jsValues.MTPArray(Object.values(this.__values));
+          }
           get toString() {
             return () => {
               const items  = Object.entries(this.__values).map(
-                (item, index) => (jsValues.repr(item[0]) + ": ", jsValues.repr(item[1]))
+                (item, index) => (jsValues.repr(item[0]) + ": " + jsValues.repr(item[1]))
               );
+              console.log("items", items);
               const inner = (items.length <= 10) ? items.join(", ") : (items.slice(0, 5).join(", ") + "..." + items.slice(-5).join(", "))
               return `<Object(${items.length}){${inner}}>`;
             };
@@ -396,8 +412,8 @@
             return "Objects do not save.";
           }
         }
-        jsValues.Object.prototype.type = "PlainObject";
-        jsValues.Array = class Array {
+        jsValues.MTPObject.prototype.type = "PlainObject";
+        jsValues.MTPArray = class MTPArray {
           constructor(arr) {
             this.__values = arr || [];
           }
@@ -458,12 +474,12 @@
             return "Arrays do not save.";
           }
         }
-        jsValues.Array.prototype.type = "Array";
+        jsValues.MTPArray.prototype.type = "Array";
 
 
-        jsValues.Set = class Set {
+        jsValues.MTPSet = class MTPSet {
           constructor(obj) {
-            this.__values = obj || new (globalThis.Set)();
+            this.__values = obj || new (globalThis.MTPSet)();
           }
           add(value) {
             return this.__values.add(value);
@@ -500,8 +516,8 @@
             return "Sets do not save."
           }
         }
-        jsValues.Set.prototype.type = "Set";
-        jsValues.Map = class Map {
+        jsValues.MTPSet.prototype.type = "Set";
+        jsValues.MTPMap = class MTPMap {
           constructor(obj) {
             this.__values = obj || new (globalThis.Map)();
           }
@@ -525,11 +541,12 @@
           }
           get toString() {
             return () => {
-              const items  = Object.entries(this.__values).map(
-                (item, index) => (jsValues.repr(item[0]) + ": ", jsValues.repr(item[1]))
-              );
+              const items = Array.from(this.__values.entries().map(
+                (item, index) => (jsValues.repr(item[0]) + ": " + jsValues.repr(item[1]))
+              ));
+              console.log("items", items);
               const inner = (items.length <= 10) ? items.join(", ") : (items.slice(0, 5).join(", ") + "..." + items.slice(-5).join(", "))
-              return `<Object(${items.length}){${inner}}>`;
+              return `<Map(${items.length}){${inner}}>`;
             };
           }
           set toString(e) {
@@ -539,11 +556,11 @@
             return "Maps do not save.";
           }
         }
-        jsValues.Map.prototype.type = "Map";	    
+        jsValues.MTPMap.prototype.type = "Map";	    
         
-        jsValues.Symbol = class SymbolContainer {
+        jsValues.MTPSymbol = class MTPSymbol {
           constructor() {
-            jsValues.symbol = Symbol();
+            this.symbol = Symbol();
           }
           toString() {
             return `<Symbol>`;
@@ -552,7 +569,7 @@
             return "Symbols do not save.";
           }
         }
-        jsValues.Symbol.prototype.type = "symbol";
+        jsValues.MTPSymbol.prototype.type = "symbol";
 
         jsValues.BaseFunction = class BaseFunction {
           constructor(func, functionDef) {
@@ -587,7 +604,7 @@
             return outerGen();
           }
         }
-        jsValues.Function = class Function extends jsValues.BaseFunction {
+        jsValues.MTPFunction = class MTPFunction extends jsValues.BaseFunction {
           toString() {
             return `<Function functionDef=${JSON.stringify(this.functionDef)}>`;
           }
@@ -599,27 +616,32 @@
           }
             
         }
-        jsValues.GeneratorFunction = class GeneratorFunction extends jsValues.BaseFunction {
+        jsValues.MTPGeneratorFunction = class MTPGeneratorFunction extends jsValues.BaseFunction {
           toString() {
             return `<GeneratorFunction functionDef=${JSON.stringify(this.functionDef)}>`;
           }
           call() {
             const generatorFunction = this;
-            return (function*() {return new jsValues.Generator(generatorFunction, null);})();
+            const functionScope = jsValues.getHighestScope();
+            return (function*() {return new jsValues.Generator(generatorFunction, functionScope);})();
           }
           callWithThis(thisVal, methodName) {
             this.func = super.generateOuterGen(thisVal, methodName);
             const generatorFunction = this;
-            return (function*() {return new jsValues.Generator(generatorFunction, null);})();
+            const functionScope = jsValues.getHighestScope();
+            return (function*() {return new jsValues.Generator(generatorFunction, functionScope);})();
           }
         }
         jsValues.Generator = class Generator {
-          constructor(generatorFunction, functionCall) {
-            if (functionCall === null) {
-              functionCall = new jsValues.TempFunctionCall(new jsValues.TempFunctionDef());
+          constructor(generatorFunction, functionScope) {
+            if (functionScope === null) {
+              this.callArgs = {};
+            } else {
+              this.callArgs = functionScope.vars;
             }
-            this.generator = generatorFunction.func(functionCall.convert());
+            this.generator = generatorFunction.func();
             this.isDone = false;
+            console.log("init", this);
           }
           getNext() {
             const thisVal = this;
@@ -627,6 +649,7 @@
               if (thisVal.isDone) return jsValues.Nothing;
               let result = { value: null };
               
+              jsValues.enterScope(thisVal.callArgs);
               while (!(result.value instanceof jsValues.YieldValue)) {
                 result = thisVal.generator.next();
                 
@@ -637,12 +660,13 @@
                   yield result.value; // to ensure synced execution
                 }
               }
+              jsValues.exitScope();
               return result.value.getValue();
             }
             return outerGen();
           }
           toString() {
-            return `<Generator generator=${this.generator} isDone=${this.isDone}>`;
+            return `<Generator isDone=${this.isDone} callArgs=${JSON.stringify(this.callArgs)}>`;
           }
         }
         jsValues.Method = class Method {
@@ -752,7 +776,7 @@
           }
         }
         
-        jsValues.Class = class Class { // wrapper class for classes
+        jsValues.MTPClass = class Class { // wrapper class for classes
           constructor(someClass) {
             this.class = someClass;
             this.class.WRAPPER = this;
@@ -796,8 +820,8 @@
                 const newPrototype = Object.getPrototypeOf(oldWrapper.class)
                 const newWrapper = newPrototype.WRAPPER;
 
-                if (([jsValues.Object, jsValues.Array, jsValues.Set, jsValues.Map].includes(newPrototype)) && (name === "__init__")) {
-                  return new jsValues.Function(function*() {return jsValues.Nothing}, null);
+                if (([jsValues.MTPObject, jsValues.MTPArray, jsValues.MTPSet, jsValues.MTPMap].includes(newPrototype)) && (name === "__init__")) {
+                  return new jsValues.MTPFunction(function*() {return jsValues.Nothing}, null);
                 }
 
                 let method = null;
@@ -863,13 +887,13 @@
           if (jsValues.typeof(strOrClass) === "Class") return strOrClass.class;
           switch (strOrClass) {
             case ("Object"):
-              return jsValues.Object;
+              return jsValues.MTPObject;
             case ("Array"):
-              return jsValues.Array;
+              return jsValues.MTPArray;
             case ("Set"):
-              return jsValues.Set;
+              return jsValues.MTPSet;
             case ("Map"):
-              return jsValues.Map;
+              return jsValues.MTPMap;
             default:
               if (!isForInstanceof) {
                 throw "Tried to extend invalid value";
@@ -897,7 +921,7 @@
             let oldClass = constructor;
             while (true) {
               const superClass = Object.getPrototypeOf(oldClass);
-              if (!(superClass === Function || superClass === jsValues.Object || superClass === jsValues.Array || superClass === jsValues.Set || superClass === jsValues.Map) && !(superClass == null)) {
+              if (!(superClass === Function || superClass === jsValues.MTPObject || superClass === jsValues.MTPArray || superClass === jsValues.MTPSet || superClass === jsValues.MTPMap) && !(superClass == null)) {
                 superClasses.unshift(superClass); // Use unshift to mimic the behavior of super in javascript.
               } else {
                 break;
@@ -1014,12 +1038,6 @@
                   defaultValue: "Hello, World!"
                 }
               }
-            },
-            {
-              opcode: "throw",
-              blockType: Scratch.BlockType.COMMAND,
-              text: "throw an error.",
-              hideFromPalette: true // yeah this isnt supposed to be used.
             },
             {
               opcode: "outputCode",
@@ -1192,7 +1210,7 @@
                   type: Scratch.ArgumentType.STRING,
                   defaultValue: "Insert Object / Array / Set / Map Here"
                 }
-              }
+              },
             },
             "---",
             {
@@ -1212,8 +1230,26 @@
                 OBJECT: {
                   type: Scratch.ArgumentType.STRING,
                   defaultValue: "Insert Object / Array/ Set / Map Here" // you can use string too
-                }
-              }
+                },
+              },
+            },
+            {
+              opcode: "getAllKeysValues",
+              func: "noComp",
+              blockType: Scratch.BlockType.REPORTER,
+              blockShape: Scratch.BlockShape.SQUARE,
+              tooltip: "Gets all keys or values of an object.",
+              text: "get all [MODE] of [OBJECT]",
+              arguments: {
+                MODE: {
+                  type: Scratch.ArgumentType.STRING,
+                  menu: "keysValuesMode",
+                },
+                OBJECT: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Insert Object Here"
+                },
+              },
             },
             "---",
             this.makeLabel("More Values"),
@@ -1231,12 +1267,12 @@
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               tooltip: "The \"Nothing\" value",
-              text: "nothing"
+              text: "nothing",
             },
             // Planning on adding ==, === and ==== (basically just Object.is) for objects
             // I FOUND A WAY TO MAKE FUNCTIONS
             // https://github.com/PenguinMod/PenguinMod-Vm/blob/develop/src/compiler/jsgen.js#L556
-            this.makeLabel("Anonymous Function Definitions"),
+            this.makeLabel("Blocks for Functions"),
             {
               opcode: "createFunction",
               func: "noComp",
@@ -1289,16 +1325,33 @@
               },
             },
             {
-              opcode: "getArgument",
+              opcode: "getFunctionVar",
               func: "noComp",
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
-              tooltip: "Gets a function argument. Can ONLY be used within a function definition block.",
-              text: "get argument [NAME]",
+              tooltip: "Gets a function variable or argument. Can ONLY be used within a function definition block.",
+              text: "get function var [NAME]",
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
-                  defaultValue: "Argument Name",
+                  defaultValue: "Variable or Argument Name",
+                },
+              },
+            },
+            {
+              opcode: "setFunctionVar",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              tooltip: "Sets a function variable or argument. Can ONLY be used within a function definition block.",
+              text: "set function var [NAME] to [VALUE]",
+              arguments: {
+                NAME: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "Variable or Argument Name",
+                },
+                VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: "",
                 },
               },
             },
@@ -1315,7 +1368,7 @@
               },
               isTerminal: true,
             },
-            this.makeLabel("Anonymous Function Calls"),
+            this.makeLabel("Blocks for Function Calls"),
             {
               opcode: "callFunction",
               func: "noComp",
@@ -1341,7 +1394,7 @@
               arguments: {
                FUNCTION: {
                  type: Scratch.ArgumentType.STRING,
-                 defaultValue: "Insert Function Here",
+                 defaultValue: "Insert (Generator-) Function Here",
                },
               },
             },
@@ -1511,9 +1564,7 @@
                 }
               }
             },
-            this.makeLabel("Generator Functions"),
-            this.makeLabel("Use the \"call function\" block"),
-            this.makeLabel("to create a generator instance"),
+            this.makeLabel("Blocks only for Generator Functions"),
             {
               opcode: "generatorFunction",
               func: "noComp",
@@ -1535,6 +1586,8 @@
               text: ["prepare", "and create generator function"],
               tooltip: "Allows the definition of arguments before creating a generator function.",
             },
+            this.makeLabel("Use the \"call function\" block"),
+            this.makeLabel("to create a generator instance"),
             {
               opcode: "yieldValue",
               func: "noComp",
@@ -1600,15 +1653,19 @@
             },
           ],
           menus: {
+            keysValuesMode: {
+              allowReporters: false,
+              items: ["keys", "values"],
+            },
             objectClasses: {
               allowReporters: false,
-              items: ["Object", "Array", "Set", "Map"]
+              items: ["Object", "Array", "Set", "Map"],
             },
             defaultClasses: {
               allowReporters: true,
               isTypeable: true,
-              items: ["Object", "Array", "Set", "Map"]
-            }
+              items: ["Object", "Array", "Set", "Map"],
+            },
           }
         };
       }
@@ -1632,7 +1689,7 @@
         throw "Please turn on compiler. " // If its not monitor
       }
       generateYieldGen(innerCode) {
-        return `(yield* (function*() {${innerCode}})())`
+        return `(yield* (function*() {${innerCode}})())`;
       }
       getCompileInfo() {
         return {
@@ -1676,9 +1733,14 @@
               name      : generator.descendInputOfBlock(block, "NAME"   ),
               defaultVal: generator.descendInputOfBlock(block, "DEFAULT"),
             }),
-            getArgument: (generator, block) => ({
+            getFunctionVar: (generator, block) => ({
               kind: "input",
               name: generator.descendInputOfBlock(block, "NAME"),
+            }),
+            setFunctionVar: (generator, block) => ({
+              kind: "stack",
+              name: generator.descendInputOfBlock(block, "NAME"),
+              value: generator.descendInputOfBlock(block, "VALUE"),
             }),
             returnFromFunction: (generator, block) => ({
               kind: "stack",
@@ -1726,6 +1788,11 @@
               key: generator.descendInputOfBlock(block, "KEY"),
               value: generator.descendInputOfBlock(block, "VALUE"),
               object: generator.descendInputOfBlock(block, "OBJECT")
+            }),
+            getAllKeysValues: (generator, block) => ({
+              kind: "input",
+              mode: block.fields.MODE.value,
+              object: generator.descendInputOfBlock(block, "OBJECT"),
             }),
             resetInternalState: (generator, block) => ({
               kind: "stack",
@@ -1841,16 +1908,16 @@
             setVar: (node, compiler, imports) => {
               const variable = compiler.descendInput(node.variable);
               const value    = compiler.descendInput(node.value   );
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._SETVAR(${variable.asUnknown()}, ${value.asUnknown()});\n`;
-              compiler.source += generatedJS;
+              const generatedCode = `vm.runtime.ext_moreTypesPlus._SETVAR(${variable.asUnknown()}, ${value.asUnknown()});\n`;
+              compiler.source += generatedCode;
             },
             createSpriteVar: (node, compiler, imports) => {
               const variable = compiler.descendInput(node.variable);
-              const generatedJS = `vm.runtime.ext_moreTypesPlus._CREATEVAR(vm.runtime.targets.indexOf(target), ${variable.asUnknown()}.toString());\n`;
-              compiler.source += generatedJS;
+              const generatedCode = `vm.runtime.ext_moreTypesPlus._CREATEVAR(vm.runtime.targets.indexOf(target), ${variable.asUnknown()}.toString());\n`;
+              compiler.source += generatedCode;
             },
             log: (node, compiler, imports) => {
-              let contents = compiler.descendInput(node.contents)
+              let contents = compiler.descendInput(node.contents);
               compiler.source += `console.log("MORE TYPES LOG: " ,${contents.asUnknown()});\n`
             },
             ignoreReturnValue: (node, compiler, imports) => {
@@ -1861,22 +1928,22 @@
               let object;
               switch (node.type) {
                 case "Object":
-                  object = `new ((runtime.ext_moreTypesPlus).Object)()`
+                  object = `new ((runtime.ext_moreTypesPlus).MTPObject)()`;
                   break;
                 case "Array":
-                  object = `new ((runtime.ext_moreTypesPlus).Array)()`
+                  object = `new ((runtime.ext_moreTypesPlus).MTPArray)()`;
                   break;
                 case "Set":
-                  object = `new ((runtime.ext_moreTypesPlus).Set)()`
+                  object = `new ((runtime.ext_moreTypesPlus).MTPSet)()`;
                   break;
                 case "Map":
-                  object = `new ((runtime.ext_moreTypesPlus).Map)()`
+                  object = `new ((runtime.ext_moreTypesPlus).MTPMap)()`;
                   break;
                 default:
-                  object = `new ((runtime.ext_moreTypesPlus).Object)()`
+                  object = `new ((runtime.ext_moreTypesPlus).MTPObject)()`;
                   break;
               }
-              return new (imports.TypedInput)(object, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(object, imports.TYPE_UNKNOWN);
             },
             createFunction: (node, compiler, imports) => {
               // big hack ALSO STOLEN
@@ -1884,13 +1951,13 @@
               compiler.descendStack(node.stack, new (imports.Frame)(false));
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
-              const generatedJS = `new (runtime.ext_moreTypesPlus.Function)(
-                (function*(){
-                  ${stackSrc}
-                  return runtime.ext_moreTypesPlus.Nothing;
-                }), null
-              )`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+              const generatedCode = `new (runtime.ext_moreTypesPlus.MTPFunction)(
+  (function*(){
+    ${stackSrc}
+    return runtime.ext_moreTypesPlus.Nothing;
+  }), null
+)`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             prepareAndCreateFunction: (node, compiler, imports) => {
               const oldSrc = compiler.source;
@@ -1904,32 +1971,19 @@
               compiler.source = oldSrc;
               
               const functionDefLocal = compiler.localVariables.next();
-
-              const generatedJS2 = `(yield* (function*() {
-                runtime.ext_moreTypesPlus.enterFunctionDef();
-                try {  ${prepareSrc}  }
-                finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
-                return new (runtime.ext_moreTypesPlus.Function)(
-                  (function*() {
-                    ${funcCodeSrc}
-                    return runtime.ext_moreTypesPlus.Nothing;
-                  }), 
-                  ${functionDefLocal}
-                );
-              })())`;
-              const generatedJS = jsValues.generateYieldGen(
-                `runtime.ext_moreTypesPlus.enterFunctionDef();
-                try {  ${prepareSrc}  }
-                finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
-                return new (runtime.ext_moreTypesPlus.Function)(
-                  (function*() {
-                    ${funcCodeSrc}
-                    return runtime.ext_moreTypesPlus.Nothing;
-                  }), 
-                  ${functionDefLocal}
-                );`
-              );
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`runtime.ext_moreTypesPlus.enterFunctionDef();
+try {  ${prepareSrc}  }
+finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+return new (runtime.ext_moreTypesPlus.MTPFunction)(
+  (function*() {
+    ${funcCodeSrc}
+    return runtime.ext_moreTypesPlus.Nothing;
+  }), 
+  ${functionDefLocal}
+);
+`);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             defineArgument: (node, compiler, imports) => {
               const name = compiler.descendInput(node.name);
@@ -1940,10 +1994,16 @@
               const defaultVal = compiler.descendInput(node.defaultVal);
               compiler.source += `runtime.ext_moreTypesPlus.addOptionalFunctionDefArg(${name.asString()}, ${defaultVal.asUnknown()});\n`;
             },
-            getArgument: (node, compiler, imports) => {
-              const name        = compiler.descendInput(node.name);
-              const generatedJS = `runtime.ext_moreTypesPlus.getFunctionArgument(${name.asString()})`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            getFunctionVar: (node, compiler, imports) => {
+              const name = compiler.descendInput(node.name);
+              const generatedCode = `runtime.ext_moreTypesPlus.getFunctionVar(${name.asString()})`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
+            },
+            setFunctionVar: (node, compiler, imports) => {
+              const name  = compiler.descendInput(node.name );
+              const value = compiler.descendInput(node.value);
+              const generatedCode = `runtime.ext_moreTypesPlus.setFunctionVar(${name.asString()}, ${value.asUnknown()});\n`;
+              compiler.source += generatedCode;
             },
             returnFromFunction: (node, compiler, imports) => {
               compiler.source += `return ${compiler.descendInput(node.value).asUnknown()};\n`;
@@ -1953,19 +2013,16 @@
               const functionCallLocal = compiler.localVariables.next();
               const func              = compiler.descendInput(node.func);
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              const generatedJS = `(yield* (
-                (function* (){
-                  ${funcLocal} = ${func.asUnknown()};
-                  if (!runtime.ext_moreTypesPlus.isFunctionOrMethod(${funcLocal})) throw "Attempted to call non-function.";
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.getFunctionDef());
-                  ${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();
-                  runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
-                  try {  return yield* ${funcLocal}.call();  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ))`;
-              console.log(generatedJS);
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`${funcLocal} = ${func.asUnknown()};
+if (!runtime.ext_moreTypesPlus.isFunctionOrMethod(${funcLocal})) throw "Attempted to call non-function.";
+runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.getFunctionDef());
+${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();
+runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
+try {  return yield* ${funcLocal}.call();  }
+finally {  runtime.ext_moreTypesPlus.exitScope();  }
+`);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             prepareAndCallFunction: (node, compiler, imports) => {
               const funcLocal         = compiler.localVariables.next();
@@ -1977,19 +2034,17 @@
               compiler.source  = oldSrc;
               
               if (!compiler.script.yields === true) throw "Something happened in the More Types Plus extension"
-              const generatedJS = `(yield* (
-                (function* (){
-                  ${funcLocal} = ${func.asUnknown()};
-                  if (!runtime.ext_moreTypesPlus.isFunctionOrMethod(${funcLocal})) throw "Attempted to call non-function.";
-                  runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.getFunctionDef());
-                  try {  ${prepareSrc}  }
-                  finally {  ${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                  runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
-                  try {  return yield* ${funcLocal}.call();  }
-                  finally {  runtime.ext_moreTypesPlus.exitScope();  }
-                })()
-              ))`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`${funcLocal} = ${func.asUnknown()};
+if (!runtime.ext_moreTypesPlus.isFunctionOrMethod(${funcLocal})) throw "Attempted to call non-function.";
+runtime.ext_moreTypesPlus.enterFunctionCall(${funcLocal}.getFunctionDef());
+try {  ${prepareSrc}  }
+finally {  ${functionCallLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+runtime.ext_moreTypesPlus.enterScope(${functionCallLocal}.convert());
+try {  return yield* ${funcLocal}.call();  }
+finally {  runtime.ext_moreTypesPlus.exitScope();  }
+`);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             setNextCallArgument: (node, compiler, imports) => {
               const value = compiler.descendInput(node.value);
@@ -2005,15 +2060,15 @@
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              const generatedJS = `(
-                ${objLocal} = ${obj.asUnknown()},
-                (
-                  typeof (${objLocal} ? ${objLocal} : {}).get === "function"
-                    ? ${objLocal}.get(${key.asUnknown()})
-                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
-                )
-              )`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+              const generatedCode = `(
+  ${objLocal} = ${obj.asUnknown()},
+  (
+    typeof (${objLocal} ? ${objLocal} : {}).get === "function"
+      ? ${objLocal}.get(${key.asUnknown()})
+      : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
+  )
+)`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             setIndex: (node, compiler, imports) => {
               const key   = compiler.descendInput(node.key   );
@@ -2021,15 +2076,15 @@
               const obj   = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              const generatedJS = `
-                const ${objLocal} = ${obj.asUnknown()};
-                (
-                  (typeof (${objLocal} ? ${objLocal} : {}).set === "function")
-                    ? ${objLocal}.set(${key.asUnknown()}, ${value.asUnknown()})
-                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot set properties of \${${objLocal}}\`)
-                );
-              `;
-              compiler.source += generatedJS;
+              const generatedCode = 
+`${objLocal} = ${obj.asUnknown()};
+(
+  (typeof (${objLocal} ? ${objLocal} : {}).set === "function")
+    ? ${objLocal}.set(${key.asUnknown()}, ${value.asUnknown()})
+    : runtime.ext_moreTypesPlus.throwErr(\`Cannot set properties of \${${objLocal}}\`)
+);
+`;
+              compiler.source += generatedCode;
             },
             iterateObject: (node, compiler, imports) => {
               const keyVar    = compiler.descendVariable(node.key );
@@ -2038,14 +2093,14 @@
               // im stupid and dont know which variables are used so im just going to use a local variable
               const iterableLocal = compiler.localVariables.next();
               const keyLocal      = compiler.localVariables.next();
-              const generatedJS = `
-                const ${iterableLocal} = runtime.ext_moreTypesPlus.toIterable(${obj.asUnknown()});
-                for (const ${keyLocal} of ${iterableLocal}) {
-                  ${keyVar.source} = ${keyLocal}[0];
-                  ${valueVar.source} = ${keyLocal}[1];
-                }
-              `;
-              compiler.source += generatedJS;
+              const generatedCode = 
+`const ${iterableLocal} = runtime.ext_moreTypesPlus.toIterable(${obj.asUnknown()});
+for (const ${keyLocal} of ${iterableLocal}) {
+  ${keyVar.source} = ${keyLocal}[0];
+  ${valueVar.source} = ${keyLocal}[1];
+}
+`;
+              compiler.source += generatedCode;
               // time to add the substack
               compiler.descendStack(node.stack, new (imports.Frame)(true, "moreTypesPlus.iterateObject"));
               compiler.yieldLoop();
@@ -2058,18 +2113,44 @@
               // im stupid and dont know which variables are used so im just going to use a local variable
               const iterableLocal = compiler.localVariables.next();
               const keyLocal      = compiler.localVariables.next();
-              const generatedJS = `
-                const ${iterableLocal} = runtime.ext_moreTypesPlus.toIterable(${obj.asUnknown()});
-                for (const ${keyLocal} of ${iterableLocal}) {
-                  tempVars[${keyVar.asString()}] = ${keyLocal}[0];
-                  tempVars[${valueVar.asString()}] = ${keyLocal}[1];
-                }
-              `;            
-              compiler.source += generatedJS;
+              const generatedCode = 
+`const ${iterableLocal} = runtime.ext_moreTypesPlus.toIterable(${obj.asUnknown()});
+for (const ${keyLocal} of ${iterableLocal}) {
+  tempVars[${keyVar.asString()}] = ${keyLocal}[0];
+  tempVars[${valueVar.asString()}] = ${keyLocal}[1];
+}
+`;
+              compiler.source += generatedCode;
               // time to add the substack
               compiler.descendStack(node.stack, new (imports.Frame)(true, "moreTypesPlus.iterateObject"));
               compiler.yieldLoop();
               compiler.source += "};\n"
+            },
+            getAllKeysValues: (node, compiler, imports) => {
+              const obj      = compiler.descendInput(node.object);
+              const objLocal = compiler.localVariables.next();
+              let funcName
+              switch (node.mode) {
+                case "keys": 
+                  funcName = `getKeys`;
+                  break;
+                case "values": 
+                  funcName = `getValues`;
+                  break;
+                default:
+                  throw "Impossible!";
+              }
+              const generatedCode = 
+`(yield* (
+  ${objLocal} = ${obj.asUnknown()},
+  (
+    typeof (${objLocal} ? ${objLocal} : {}).${funcName} === "function"
+      ? ${objLocal}.${funcName}()
+      : runtime.ext_moreTypesPlus.throwErr(\`Cannot read ${node.mode} of \${${objLocal}}\`)
+  )
+))`;
+              console.log("=>", generatedCode);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             resetInternalState: (node, compiler, imports) => {
               compiler.source += "runtime.ext_moreTypesPlus.resetState();\n";
@@ -2086,62 +2167,62 @@
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              const generatedJS = `
-                const ${objLocal} = ${obj.asUnknown()};
-                (
-                  typeof (${objLocal} ? ${objLocal} : {}).delete === "function"
-                    ? ${objLocal}.delete(${key.asUnknown()})
-                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot delete properties of \${${objLocal}}\`)
-                );
-              `;
-              compiler.source += generatedJS;
+              const generatedCode = 
+`const ${objLocal} = ${obj.asUnknown()};
+(
+  typeof (${objLocal} ? ${objLocal} : {}).delete === "function"
+    ? ${objLocal}.delete(${key.asUnknown()})
+    : runtime.ext_moreTypesPlus.throwErr(\`Cannot delete properties of \${${objLocal}}\`)
+);
+`;
+              compiler.source += generatedCode;
             },
             addItem: (node, compiler, imports) => {
               const value = compiler.descendInput(node.value );
               const obj   = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              const generatedJS = `
-                const ${objLocal} = ${obj.asUnknown()};
-                (
-                  typeof (${objLocal} ? ${objLocal} : {}).add === "function"
-                    ? ${objLocal}.add(${value.asUnknown()})
-                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot add to the end of \${${objLocal}}\`)
-                );
-              `;
-              compiler.source += generatedJS;
+              const generatedCode = 
+`const ${objLocal} = ${obj.asUnknown()};
+(
+  typeof (${objLocal} ? ${objLocal} : {}).add === "function"
+    ? ${objLocal}.add(${value.asUnknown()})
+    : runtime.ext_moreTypesPlus.throwErr(\`Cannot add to the end of \${${objLocal}}\`)
+);
+`;
+              compiler.source += generatedCode;
             },
             keyExists: (node, compiler, imports) => {
               const key = compiler.descendInput(node.key   );
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              const generatedJS = `(
-                (${objLocal} = ${obj.asUnknown()}),
-                (
-                  typeof (${objLocal} ? ${objLocal} : {}).has === "function"
-                    ? ${objLocal}.has(${key.asUnknown()})
-                    : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
-                )
-              )`;
-              //return new (imports.TypedInput)(generatedJS, imports.TYPE_BOOLEAN)
-              return new (imports.TypedInput)(`((${objLocal} = ${obj.asUnknown()}),(typeof (${objLocal} ? ${objLocal} : \{\}).has === "function")\n  ? ${objLocal}.has(${key.asUnknown()})\n  : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`))`, imports.TYPE_BOOLEAN)
+              const generatedCode = 
+`(
+  (${objLocal} = ${obj.asUnknown()}),
+  (
+    typeof (${objLocal} ? ${objLocal} : {}).has === "function"
+      ? ${objLocal}.has(${key.asUnknown()})
+      : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
+  )
+)`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_BOOLEAN);
             },
             sizeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
               
               const objLocal = compiler.localVariables.next();
-              const generatedJS = `
-                (
-                  (${objLocal} = ${obj.asUnknown()}),
-                  (
-                    typeof (${objLocal} ? ${objLocal} : {}).size === "number"
-                      ? ${objLocal}.size
-                      : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
-                  )
-                )
-              `;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_NUMBER);
+              const generatedCode = 
+`(
+  (${objLocal} = ${obj.asUnknown()}),
+  (
+    typeof (${objLocal} ? ${objLocal} : {}).size === "number"
+      ? ${objLocal}.size
+      : runtime.ext_moreTypesPlus.throwErr(\`Cannot read properties of \${${objLocal}}\`)
+  )
+)
+`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_NUMBER);
             },
             generalTypeof: (node, compiler, imports) => {
               const obj = compiler.descendInput(node.object);
@@ -2152,7 +2233,7 @@
               return new (imports.TypedInput)(`(runtime.ext_moreTypesPlus.classNameOf(${obj.asUnknown()}))`, imports.TYPE_NUMBER);
             },
             createSymbol: (node, compiler, imports) => {
-              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus).Symbol()`, imports.TYPE_UNKNOWN);
+              return new (imports.TypedInput)(`new (runtime.ext_moreTypesPlus).MTPSymbol()`, imports.TYPE_UNKNOWN);
             },
             nothingValue: (node, compiler, imports) => {
               return new (imports.TypedInput)(`runtime.ext_moreTypesPlus.Nothing`, imports.TYPE_UNKNOWN);
@@ -2161,29 +2242,29 @@
               const name     = compiler.descendInput(node.name);
               const initFunc = compiler.descendInput(node.init);
               const objLocal = compiler.localVariables.next();
-
-              const generatedJS = `(yield* (function* () {
-                ${objLocal} = new (runtime.ext_moreTypesPlus.Class)(
-                  class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
-                    constructor() {super(); this.__className = ${name.asString()}}
-                    toString() {return "<" + this.__className + " Instance>"}
-                  }
-                );
-                runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
-                return ${objLocal};
-              })())`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`${objLocal} = new (runtime.ext_moreTypesPlus.MTPClass)(
+  class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend("Object")) {
+    constructor() {super(); this.__className = ${name.asString()}}
+    toString() {return "<" + this.__className + " Instance>"}
+  }
+);
+runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
+return ${objLocal};
+`);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             createClassExtends: (node, compiler, imports) => {
               const name       = compiler.descendInput(node.name);
               const superClass = compiler.descendInput(node.superClass);
               
-              const generatedJS = `(new (runtime.ext_moreTypesPlus.Class)(
-                class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
-                  constructor() {super(); this.__className = ${name.asString()}}
-                    toString() {return "<" + this.__className + " Instance>"}
-                }))`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = 
+`(new (runtime.ext_moreTypesPlus.MTPClass)(
+class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
+  constructor() {super(); this.__className = ${name.asString()}}
+    toString() {return "<" + this.__className + " Instance>"}
+}))`
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             createClassExtendsInit: (node, compiler, imports) => {
               const name       = compiler.descendInput(node.name);
@@ -2191,17 +2272,17 @@
               const initFunc   = compiler.descendInput(node.init);
               const objLocal   = compiler.localVariables.next();
 
-              const generatedJS = `(yield* (function* () {
-                ${objLocal} = new (runtime.ext_moreTypesPlus.Class)(
-                  class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
-                    constructor() {super(); this.__className = ${name.asString()}}
-                    toString() {return "<" + this.__className + " Instance>"}
-                  }
-                );
-                runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
-                return ${objLocal};
-              })())`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`${objLocal} = new (runtime.ext_moreTypesPlus.MTPClass)(
+  class MORETYPESPLUS extends (runtime.ext_moreTypesPlus.getClassToExtend(${superClass.asUnknown()})) {
+    constructor() {super(); this.__className = ${name.asString()}}
+    toString() {return "<" + this.__className + " Instance>"}
+  }
+);
+runtime.ext_moreTypesPlus.appendMethod(${objLocal}, "__init__", ${initFunc.asUnknown()});
+return ${objLocal};
+`);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             this: (node, compiler, imports) => {
               return new (imports.TypedInput)(`runtime.ext_moreTypesPlus.isObject(this) ? this : yield* runtime.ext_moreTypesPlus.throwErr("Cannot access this outside of class constructor and methods")`
@@ -2220,16 +2301,16 @@
               const name      = compiler.descendInput(node.name);
               const objLocal  = compiler.localVariables.next();
               const nameLocal = compiler.localVariables.next();
-              const generatedJS = `(yield* (function* () {
-                ${objLocal} = ${obj.asUnknown()};
-                ${nameLocal} = ${name.asString()};
-                return new runtime.ext_moreTypesPlus.Method(
-                  runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}),
-                  ${objLocal}, ${nameLocal}
-                );
-              })())`
-              const generatedJS2 = `new runtime.ext_moreTypesPlus.Method(runtime.ext_moreTypePlus.getObjMethod(${obj}, ${name}))`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`${objLocal} = ${obj.asUnknown()};
+${nameLocal} = ${name.asString()};
+return new runtime.ext_moreTypesPlus.Method(
+  runtime.ext_moreTypesPlus.getObjMethod(${objLocal}, ${nameLocal}),
+  ${objLocal}, ${nameLocal}
+);
+`);
+              const generatedCode2 = `new runtime.ext_moreTypesPlus.Method(runtime.ext_moreTypePlus.getObjMethod(${obj}, ${name}))`
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             construct: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
@@ -2245,16 +2326,16 @@
               const prepareSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
               
-              const generatedJS = `(yield* (function* () {
-                ${classLocal} = ${classInput.asUnknown()};
-                runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").getFunctionDef());  
-                try {  ${prepareSrc}  }
-                finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
-                runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
-                try {  return (yield* (runtime.ext_moreTypesPlus.constructFrom(${classLocal})));  }
-                finally {  runtime.ext_moreTypesPlus.exitScope();  }
-              })())`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`${classLocal} = ${classInput.asUnknown()};
+runtime.ext_moreTypesPlus.enterFunctionCall(runtime.ext_moreTypesPlus.getClassMethod(${classLocal}, "__init__").getFunctionDef());  
+try {  ${prepareSrc}  }
+finally {  ${callLocal} = runtime.ext_moreTypesPlus.exitFunctionCall();  }
+runtime.ext_moreTypesPlus.enterScope(${callLocal}.convert());
+try {  return (yield* (runtime.ext_moreTypesPlus.constructFrom(${classLocal})));  }
+finally {  runtime.ext_moreTypesPlus.exitScope();  }
+`)
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             instanceof: (node, compiler, imports) => {
               const constructor = compiler.descendInput(node.class).asUnknown();
@@ -2267,14 +2348,13 @@
               compiler.descendStack(node.stack, new (imports.Frame)(false));
               const stackSrc = compiler.source.substring(oldSrc.length);
               compiler.source = oldSrc;
-              console.log("compiler", compiler);
-              const generatedJS = `new (runtime.ext_moreTypesPlus.GeneratorFunction)(
+              const generatedCode = `new (runtime.ext_moreTypesPlus.MTPGeneratorFunction)(
                 (function*(){
                   ${stackSrc}
                   return runtime.ext_moreTypesPlus.Nothing;
                 }), null
               )`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN)
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN)
             },
             prepareAndCreateGeneratorFunction: (node, compiler, imports) => {
               const oldSrc = compiler.source;
@@ -2289,47 +2369,45 @@
               
               const functionDefLocal = compiler.localVariables.next();
 
-              const generatedJS = `(yield* (
-                runtime.ext_moreTypesPlus.enterFunctionDef(),
-                function*() {
-                  try {  ${prepareSrc}  }
-                  finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
-                  return new (runtime.ext_moreTypesPlus.GeneratorFunction)(
-                    (function*(){
-                      ${funcCodeSrc}
-                      return runtime.ext_moreTypesPlus.Nothing;
-                    }), ${functionDefLocal}
-                  );
-                }()
-              ))`
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+              const generatedCode = this.generateYieldGen(
+`runtime.ext_moreTypesPlus.enterFunctionDef();
+try {  ${prepareSrc}  }
+finally {  ${functionDefLocal} = runtime.ext_moreTypesPlus.exitFunctionDef();  }
+return new (runtime.ext_moreTypesPlus.MTPGeneratorFunction)(
+  (function*(){
+    ${funcCodeSrc}
+    return runtime.ext_moreTypesPlus.Nothing;
+  }), ${functionDefLocal}
+);
+`);
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             yieldValue: (node, compiler, imports) => {
               const value       = compiler.descendInput(node.value);
-              const generatedJS = `yield (new runtime.ext_moreTypesPlus.YieldValue(${value.asUnknown()}));\n`;
-              compiler.source += generatedJS;
+              const generatedCode = `yield (new runtime.ext_moreTypesPlus.YieldValue(${value.asUnknown()}));\n`;
+              compiler.source += generatedCode;
             },
             nextGeneratorValue: (node, compiler, imports) => {
               const generatorVal   = compiler.descendInput(node.generator);
               const generatorLocal = compiler.localVariables.next();
-              const generatedJS = `yield* (
+              const generatedCode = `(yield* (
                 ${generatorLocal} = ${generatorVal.asUnknown()},
                 (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
                   ${generatorLocal}.getNext() :
                   runtime.ext_moreTypesPlus.throwErr("Attempted to get next value of non-generator.")
-              )`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            ))`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             },
             generatorIsDone: (node, compiler, imports) => {
               const generatorVal   = compiler.descendInput(node.generator);
               const generatorLocal = compiler.localVariables.next();
-              const generatedJS = `yield* (
+              const generatedCode = `(yield* (
                 ${generatorLocal} = ${generatorVal.asUnknown()},
                 (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
                   (function*() {return ${generatorLocal}.isDone})():
                   runtime.ext_moreTypesPlus.throwErr("Attempted to ask, wether a non-generator is done.")
-              )`;
-              return new (imports.TypedInput)(generatedJS, imports.TYPE_UNKNOWN);
+            ))`;
+              return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
             }
           }
         }
@@ -2339,9 +2417,6 @@
           blockType: Scratch.BlockType.LABEL,
           text: text
         }
-      }
-      throw() {
-        throw "User generated Error. "
       }
       hello() {
         return 'World!';
