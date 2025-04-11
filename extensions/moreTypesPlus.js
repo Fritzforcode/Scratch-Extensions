@@ -162,7 +162,7 @@
           if (value instanceof jsValues.MTPGeneratorFunction) {
             return "GeneratorFunction"
           }
-          if (value instanceof jsValues.Generator) {
+          if (value instanceof jsValues.MTPGenerator) {
             return "Generator"
           }
           if (value instanceof jsValues.MTPClass) {
@@ -336,7 +336,7 @@
         }
         jsValues.getFunctionVar = function (name) {
           if (jsValues.functionScopeLayers.length === 0) {
-            throw '"get function var" cannot be used outside a function or class definition block.';
+            throw '"function var" cannot be used outside a function or class definition block.';
           }
           const scope = jsValues.getHighestScope();
           if (!scope.vars.hasOwnProperty(name)) {
@@ -623,16 +623,16 @@
           call() {
             const generatorFunction = this;
             const functionScope = jsValues.getHighestScope();
-            return (function*() {return new jsValues.Generator(generatorFunction, functionScope);})();
+            return (function*() {return new jsValues.MTPGenerator(generatorFunction, functionScope);})();
           }
           callWithThis(thisVal, methodName) {
             this.func = super.generateOuterGen(thisVal, methodName);
             const generatorFunction = this;
             const functionScope = jsValues.getHighestScope();
-            return (function*() {return new jsValues.Generator(generatorFunction, functionScope);})();
+            return (function*() {return new jsValues.MTPGenerator(generatorFunction, functionScope);})();
           }
         }
-        jsValues.Generator = class Generator {
+        jsValues.MTPGenerator = class MTPGenerator {
           constructor(generatorFunction, functionScope) {
             if (functionScope === null) {
               this.callArgs = {};
@@ -643,7 +643,7 @@
             this.isDone = false;
             console.log("init", this);
           }
-          getNext() {
+          getNext(simplify) {
             const thisVal = this;
             const outerGen = function* () {
               if (thisVal.isDone) return jsValues.Nothing;
@@ -661,7 +661,7 @@
                 }
               }
               jsValues.exitScope();
-              return result.value.getValue();
+              return simplify ? result.value.getValue() : result.value;
             }
             return outerGen();
           }
@@ -1330,7 +1330,7 @@
               blockType: Scratch.BlockType.REPORTER,
               blockShape: Scratch.BlockShape.SQUARE,
               tooltip: "Gets a function variable or argument. Can ONLY be used within a function definition block.",
-              text: "get function var [NAME]",
+              text: "function var [NAME]",
               arguments: {
                 NAME: {
                   type: Scratch.ArgumentType.STRING,
@@ -1596,6 +1596,19 @@
               tooltip: "Usable within generator functions. Yields the given value.",
               arguments: {
                 VALUE: {
+                  type: Scratch.ArgumentType.STRING,
+                  defaultValue: ""
+                }
+              }
+            },
+            {
+              opcode: "yieldFrom",
+              func: "noComp",
+              blockType: Scratch.BlockType.COMMAND,
+              text: "yield from [GENERATOR]",
+              tooltip: "Usable within generator functions. Yields all the values of a generator",
+              arguments: {
+                GENERATOR: {
                   type: Scratch.ArgumentType.STRING,
                   defaultValue: ""
                 }
@@ -1894,6 +1907,10 @@
             yieldValue: (generator, block) => ({
               kind: "stack",
               value: generator.descendInputOfBlock(block, "VALUE"),
+            }),
+            yieldFrom: (generator, block) => ({
+              kind: "stack",
+              "generator": generator.descendInputOfBlock(block, "GENERATOR"),
             }),
             nextGeneratorValue: (generator, block) => ({
               kind: "input",
@@ -2387,13 +2404,23 @@ return new (runtime.ext_moreTypesPlus.MTPGeneratorFunction)(
               const generatedCode = `yield (new runtime.ext_moreTypesPlus.YieldValue(${value.asUnknown()}));\n`;
               compiler.source += generatedCode;
             },
+            yieldFrom: (node, compiler, imports) => {
+              const generatorVal   = compiler.descendInput(node.generator);
+              const generatorLocal = compiler.localVariables.next();
+              const generatedCode = 
+`${generatorLocal} = ${generatorVal.asUnknown()};
+if (!(${generatorLocal} instanceof runtime.ext_moreTypesPlus.MTPGenerator)) throw "Attempted to yield from non-generator";
+while (!${generatorLocal}.isDone) {yield* ${generatorLocal}.getNext(false)}
+`;
+              compiler.source += generatedCode;
+            },
             nextGeneratorValue: (node, compiler, imports) => {
               const generatorVal   = compiler.descendInput(node.generator);
               const generatorLocal = compiler.localVariables.next();
               const generatedCode = `(yield* (
                 ${generatorLocal} = ${generatorVal.asUnknown()},
-                (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
-                  ${generatorLocal}.getNext() :
+                (${generatorLocal} instanceof runtime.ext_moreTypesPlus.MTPGenerator) ?
+                  ${generatorLocal}.getNext(true) :
                   runtime.ext_moreTypesPlus.throwErr("Attempted to get next value of non-generator.")
             ))`;
               return new (imports.TypedInput)(generatedCode, imports.TYPE_UNKNOWN);
@@ -2403,7 +2430,7 @@ return new (runtime.ext_moreTypesPlus.MTPGeneratorFunction)(
               const generatorLocal = compiler.localVariables.next();
               const generatedCode = `(yield* (
                 ${generatorLocal} = ${generatorVal.asUnknown()},
-                (${generatorLocal} instanceof runtime.ext_moreTypesPlus.Generator) ?
+                (${generatorLocal} instanceof runtime.ext_moreTypesPlus.MTPGenerator) ?
                   (function*() {return ${generatorLocal}.isDone})():
                   runtime.ext_moreTypesPlus.throwErr("Attempted to ask, wether a non-generator is done.")
             ))`;
