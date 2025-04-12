@@ -327,8 +327,10 @@
         jsValues.enterScope = function (vars) {
           if (vars === null) vars = {};
           jsValues.functionScopeLayers.push(new jsValues.TempScope(vars));
+          console.log("after enter", jsValues.functionScopeLayers);
         }
         jsValues.exitScope = function () {
+          console.log("before exit", jsValues.functionScopeLayers);
           return jsValues.functionScopeLayers.pop();
         }
         jsValues.getHighestScope = function () {
@@ -646,6 +648,7 @@
           getNext(simplify) {
             const thisVal = this;
             const outerGen = function* () {
+              console.log("within getNext.outerGen")
               if (thisVal.isDone) return jsValues.Nothing;
               let result = { value: null };
               
